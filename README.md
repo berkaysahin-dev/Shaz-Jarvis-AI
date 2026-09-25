@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/berkaysahin-dev/Vision-Jarvis-AI/main/docs/preview.jpg" alt="JARVIS 2.0 Desktop Interface" width="100%" style="border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.6);" />
+  <img src="https://raw.githubusercontent.com/berkaysahin-dev/Shaz-Jarvis-AI/main/docs/preview.jpg" alt="JARVIS 2.0 Desktop Interface" width="100%" style="border-radius: 14px; box-shadow: 0 12px 36px rgba(0,0,0,0.6);" />
 </p>
 
 <p align="center">
@@ -79,8 +79,8 @@
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/berkaysahin-dev/Vision-Jarvis-AI.git
-   cd Vision-Jarvis-AI
+   git clone https://github.com/berkaysahin-dev/shaz-Jarvis-AI.git
+   cd Shaz-Jarvis-AI
    ```
 
 2. **Install Dependencies:**
@@ -115,7 +115,7 @@ To control JARVIS from a smartphone on the same Wi-Fi network:
 ## Brand & Developer
 
 Developer & Design: **[Shaz Agency](https://shazagency.com)**  
-Repository: [github.com/berkaysahin-dev/Vision-Jarvis-AI](https://github.com/berkaysahin-dev/Vision-Jarvis-AI)
+Repository: [github.com/berkaysahin-dev/shaz-Jarvis-AI](https://github.com/berkaysahin-dev/shaz-Jarvis-AI)
 
 ---
 
