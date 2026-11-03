@@ -76,5 +76,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "three": "^0.185.1"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }
