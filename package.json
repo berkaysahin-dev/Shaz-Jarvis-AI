@@ -8,10 +8,10 @@
   "homepage": "https://shazagency.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/berkaysahin-dev/Vision-Jarvis-AI.git"
+    "url": "https://github.com/berkaysahin-dev/Shaz-Jarvis-AI.git"
   },
   "bugs": {
-    "url": "https://github.com/berkaysahin-dev/Vision-Jarvis-AI/issues"
+    "url": "https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/issues"
   },
   "keywords": [
     "jarvis",
@@ -41,8 +41,7 @@
       "output": "dist-electron"
     },
     "win": {
-      "target": "nsis",
-      "icon": "public/icon.ico"
+      "target": "nsis"
     },
     "nsis": {
       "oneClick": false,
