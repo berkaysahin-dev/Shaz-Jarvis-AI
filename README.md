@@ -79,7 +79,7 @@
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/berkaysahin-dev/shaz-Jarvis-AI.git
+   git clone https://github.com/berkaysahin-dev/Shaz-Jarvis-AI.git
    cd Shaz-Jarvis-AI
    ```
 
@@ -115,7 +115,7 @@ To control JARVIS from a smartphone on the same Wi-Fi network:
 ## Brand & Developer
 
 Developer & Design: **[Shaz Agency](https://shazagency.com)**  
-Repository: [github.com/berkaysahin-dev/shaz-Jarvis-AI](https://github.com/berkaysahin-dev/shaz-Jarvis-AI)
+Repository: [github.com/berkaysahin-dev/Shaz-Jarvis-AI](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI)
 
 ---
 

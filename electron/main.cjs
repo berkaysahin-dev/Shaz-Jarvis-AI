@@ -2,13 +2,24 @@ const { app, BrowserWindow, ipcMain, Tray, Menu } = require('electron');
 const path = require('path');
 const http = require('http');
 const os = require('os');
+const crypto = require('crypto');
 
 const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
 let tray = null;
-let qrToken = Math.random().toString(36).substring(2, 10);
+// Cryptographically random per-session token. Every request to the LAN
+// remote server must carry it, otherwise anyone on the same network (or any
+// web page open in a local browser) could send commands to JARVIS.
+const qrToken = crypto.randomBytes(16).toString('hex');
 const PORT = 3001;
+const MAX_BODY_BYTES = 4 * 1024;
+const MAX_COMMAND_CHARS = 500;
+
+function isValidToken(candidate) {
+  if (typeof candidate !== 'string' || candidate.length !== qrToken.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(candidate), Buffer.from(qrToken));
+}
 
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
@@ -27,16 +38,41 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const token = url.searchParams.get('token');
 
-  if (url.pathname === '/api/command' && req.method === 'POST') {
+  if (!isValidToken(token)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Forbidden: scan the QR code shown in the JARVIS desktop app.');
+    return;
+  }
+
+  if (url.pathname === '/api/command') {
+    if (req.method !== 'POST' || !(req.headers['content-type'] || '').startsWith('application/json')) {
+      res.writeHead(405);
+      res.end();
+      return;
+    }
     let body = '';
-    req.on('data', chunk => body += chunk);
+    let tooLarge = false;
+    req.on('data', chunk => {
+      body += chunk;
+      if (body.length > MAX_BODY_BYTES) {
+        tooLarge = true;
+        req.destroy();
+      }
+    });
     req.on('end', () => {
+      if (tooLarge) return;
       try {
         const data = JSON.parse(body);
-        if (mainWindow) {
-          mainWindow.webContents.send('mobile-command', data);
+        const text = typeof data?.text === 'string' ? data.text.trim().slice(0, MAX_COMMAND_CHARS) : '';
+        if (!text) {
+          res.writeHead(400);
+          res.end();
+          return;
         }
-        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        if (mainWindow) {
+          mainWindow.webContents.send('mobile-command', { text });
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'ok' }));
       } catch (e) {
         res.writeHead(400);
@@ -227,7 +263,9 @@ function createWindow() {
       } else if (appName.includes('calc') || appName.includes('hesap makinesi')) {
         cmd = 'start calc';
       } else {
-        cmd = `start ${appName}`;
+        // Never pass free-form (AI- or remote-provided) text to the shell:
+        // `start ${appName}` allowed command injection (e.g. "calc & del ...").
+        return `${appName} için tanımlı bir kısayol yok. Desteklenenler: Chrome, YouTube, Spotify, VS Code, Not Defteri, Hesap Makinesi, İndirilenler, Masaüstü.`;
       }
 
       return new Promise((resolve) => {
@@ -285,7 +323,9 @@ function createWindow() {
         try {
           if (fs.existsSync(dirPath)) {
             const files = fs.readdirSync(dirPath);
-            const found = files.find(f => f.toLowerCase().includes(fileName));
+            // Never auto-launch executables/scripts found by a fuzzy name match.
+            const blocked = /\.(exe|msi|bat|cmd|com|scr|ps1|vbs|vbe|js|jse|wsf|wsh|hta|lnk|pif|cpl|jar|reg)$/i;
+            const found = fileName && files.find(f => f.toLowerCase().includes(fileName) && !blocked.test(f));
             if (found) {
               const fullPath = path.join(dirPath, found);
               exec(`start "" "${fullPath}"`);
@@ -439,9 +479,17 @@ function createWindow() {
     }
   });
 
+  // Only trust the self-signed mkcert certificate of the local Vite dev server.
+  // Accepting every invalid certificate would allow MITM of Gemini API traffic.
   app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-    event.preventDefault();
-    callback(true);
+    let host = '';
+    try { host = new URL(url).hostname; } catch (e) { /* ignore */ }
+    if (isDev && (host === 'localhost' || host === '127.0.0.1')) {
+      event.preventDefault();
+      callback(true);
+      return;
+    }
+    callback(false);
   });
 }
 
