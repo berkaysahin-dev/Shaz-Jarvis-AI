@@ -264,7 +264,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
         const supported = data.models
           .filter((m: any) => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
           .map((m: any) => m.name.replace(/^models\//, ''))
-          .filter((name: string) => !name.includes('embedding') && !name.includes('imagen') && !name.includes('aqa') && !name.includes('tts') && !name.includes('2.5-flash'));
+          .filter((name: string) => !name.includes('embedding') && !name.includes('imagen') && !name.includes('aqa') && !name.includes('tts') && !name.includes('native-audio') && !name.includes('live') && !name.includes('-image'));
 
         // Prioritize fast 2.0 and 1.5 flash models
         supported.sort((a: string, b: string) => {
@@ -302,7 +302,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
       GEMINI_CONFIG.CHAT_MODEL,
       ...GEMINI_CONFIG.MODELS,
       ...candidateModels
-    ])).filter(m => !m.includes('2.5-flash')); // Remove nonexistent experimental names
+    ]));
 
     let lastError: any = null;
 
