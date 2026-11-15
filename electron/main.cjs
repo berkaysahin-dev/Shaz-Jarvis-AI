@@ -9,6 +9,29 @@ const isDev = process.env.NODE_ENV === 'development';
 let mainWindow;
 let tray = null;
 let lastCpuSample = null;
+let cpuLoad = 0;
+
+// Sample CPU load on a fixed 1s clock, independent of how often the UI asks.
+// Absolute tick counters only give the since-boot average, so compare samples.
+function sampleCpu() {
+  let busy = 0, total = 0;
+  os.cpus().forEach(cpu => {
+    const t = cpu.times;
+    busy += t.user + t.nice + t.sys + t.irq;
+    total += t.user + t.nice + t.sys + t.irq + t.idle;
+  });
+  if (lastCpuSample) {
+    const dTotal = total - lastCpuSample.total;
+    if (dTotal > 0) {
+      const raw = Math.max(0, Math.min(100, ((busy - lastCpuSample.busy) / dTotal) * 100));
+      // Light smoothing so momentary spikes don't make the gauge twitch
+      cpuLoad = cpuLoad === 0 ? raw : cpuLoad * 0.6 + raw * 0.4;
+    }
+  }
+  lastCpuSample = { busy, total };
+}
+sampleCpu();
+setInterval(sampleCpu, 1000).unref();
 // Cryptographically random per-session token. Every request to the LAN
 // remote server must carry it, otherwise anyone on the same network (or any
 // web page open in a local browser) could send commands to JARVIS.
@@ -130,9 +153,25 @@ const server = http.createServer((req, res) => {
   `);
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[Mobile Server] Running at http://${getLocalIp()}:${PORT}`);
-});
+// Started on demand (Connect Phone), not at launch: opening a network port at startup
+// made Windows Firewall ask for permission every time JARVIS was opened.
+let mobileServerReady = null;
+function ensureMobileServer() {
+  if (!mobileServerReady) {
+    mobileServerReady = new Promise((resolve) => {
+      server.once('error', (err) => {
+        console.warn('[Mobile Server] Could not start:', err.message);
+        mobileServerReady = null;
+        resolve(false);
+      });
+      server.listen(PORT, '0.0.0.0', () => {
+        console.log(`[Mobile Server] Running at http://${getLocalIp()}:${PORT}`);
+        resolve(true);
+      });
+    });
+  }
+  return mobileServerReady;
+}
 
 function bringWindowToFront() {
   if (mainWindow) {
@@ -231,7 +270,8 @@ function createWindow() {
   });
 
   // IPC for QR Mobile connection info
-  ipcMain.handle('get-qr-info', () => {
+  ipcMain.handle('get-qr-info', async () => {
+    await ensureMobileServer();
     return {
       ip: getLocalIp(),
       port: PORT,
@@ -433,21 +473,8 @@ function createWindow() {
     const usedMem = totalMem - freeMem;
     const memUsage = Math.round((usedMem / totalMem) * 100);
 
-    // Current CPU load: compare tick counters with the previous sample
-    // (absolute counters only give the average since boot, which never moves).
     const cpus = os.cpus();
-    let busy = 0, total = 0;
-    cpus.forEach(cpu => {
-      const t = cpu.times;
-      busy += t.user + t.nice + t.sys + t.irq;
-      total += t.user + t.nice + t.sys + t.irq + t.idle;
-    });
-    const prev = lastCpuSample;
-    lastCpuSample = { busy, total };
-    const dTotal = prev ? total - prev.total : 0;
-    const cpuUsage = dTotal > 0
-      ? Math.max(0, Math.min(100, Math.round(((busy - prev.busy) / dTotal) * 100)))
-      : 0;
+    const cpuUsage = Math.round(cpuLoad);
 
     return {
       cpuUsage,
