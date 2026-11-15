@@ -44,6 +44,9 @@
       "target": "nsis",
       "icon": "electron/icon.ico"
     },
+    "portable": {
+      "unpackDirName": "JARVIS"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true

@@ -119,7 +119,29 @@ export function App() {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [conversation, currentResponse]);
 
-  // IPC Event Listeners & System Stats Polling
+  // System stats: one steady 2s poll for the app's lifetime. This used to live in the
+  // effect below, which re-runs on every render and so fetched (and re-rendered) in a loop.
+  useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).require) return;
+    let ipcRenderer: any;
+    try {
+      ipcRenderer = (window as any).require('electron').ipcRenderer;
+    } catch {
+      return;
+    }
+    let alive = true;
+    const fetchStats = async () => {
+      try {
+        const stats = await ipcRenderer.invoke('get-system-stats');
+        if (alive && stats) setSystemStats(stats);
+      } catch {}
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 2000);
+    return () => { alive = false; clearInterval(interval); };
+  }, []);
+
+  // IPC Event Listeners
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).require) {
       try {
@@ -145,27 +167,10 @@ export function App() {
         ipcRenderer.on('trigger-voice-listening', handleTriggerListening);
         ipcRenderer.on('reminder-triggered', handleReminderTriggered);
 
-        // Fetch System Stats periodically & record history for sparklines
-        const fetchStats = async () => {
-          try {
-            const stats = await ipcRenderer.invoke('get-system-stats');
-            if (stats) {
-              // Smooth CPU load (exponential moving average) so the gauge reads calmly
-              setSystemStats(prev => ({
-                ...stats,
-                cpuUsage: prev.cores && prev.cpuUsage > 0 ? Math.round(prev.cpuUsage * 0.65 + stats.cpuUsage * 0.35) : stats.cpuUsage,
-              }));
-            }
-          } catch(e) {}
-        };
-        fetchStats();
-        const interval = setInterval(fetchStats, 2500);
-
         return () => {
           ipcRenderer.removeListener('mobile-command', handleMobileCmd);
           ipcRenderer.removeListener('trigger-voice-listening', handleTriggerListening);
           ipcRenderer.removeListener('reminder-triggered', handleReminderTriggered);
-          clearInterval(interval);
         };
       } catch (e) {
         console.error('IPC Listener Error:', e);
