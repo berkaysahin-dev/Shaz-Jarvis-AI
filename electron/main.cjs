@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Tray, Menu, nativeTheme } = require('electron');
 const path = require('path');
 const http = require('http');
 const os = require('os');
@@ -184,13 +184,20 @@ function createTray() {
 }
 
 function createWindow() {
+  // Dark appearance so the native Windows 11 material renders with a dark tint
+  nativeTheme.themeSource = 'dark';
+  const supportsMaterial = process.platform === 'win32' && Number(os.release().split('.')[2] || 0) >= 22621;
+
   mainWindow = new BrowserWindow({
-    width: 450,
-    height: 700,
-    minWidth: 350,
-    minHeight: 500,
+    width: 1280,
+    height: 820,
+    minWidth: 1024,
+    minHeight: 640,
     frame: false,
-    backgroundColor: '#050505',
+    // Windows 11 22H2+: let the system Mica material show through the translucent sidebars
+    ...(supportsMaterial
+      ? { backgroundColor: '#00000000', backgroundMaterial: 'mica' }
+      : { backgroundColor: '#050505' }),
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
