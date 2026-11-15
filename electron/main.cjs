@@ -8,6 +8,7 @@ const isDev = process.env.NODE_ENV === 'development';
 
 let mainWindow;
 let tray = null;
+let lastCpuSample = null;
 // Cryptographically random per-session token. Every request to the LAN
 // remote server must carry it, otherwise anyone on the same network (or any
 // web page open in a local browser) could send commands to JARVIS.
@@ -432,18 +433,25 @@ function createWindow() {
     const usedMem = totalMem - freeMem;
     const memUsage = Math.round((usedMem / totalMem) * 100);
 
+    // Current CPU load: compare tick counters with the previous sample
+    // (absolute counters only give the average since boot, which never moves).
     const cpus = os.cpus();
-    let userTicks = 0, sysTicks = 0, idleTicks = 0;
+    let busy = 0, total = 0;
     cpus.forEach(cpu => {
-      userTicks += cpu.times.user;
-      sysTicks += cpu.times.sys;
-      idleTicks += cpu.times.idle;
+      const t = cpu.times;
+      busy += t.user + t.nice + t.sys + t.irq;
+      total += t.user + t.nice + t.sys + t.irq + t.idle;
     });
-    const totalTicks = userTicks + sysTicks + idleTicks;
-    const cpuUsage = Math.min(100, Math.round(((userTicks + sysTicks) / (totalTicks || 1)) * 100));
+    const prev = lastCpuSample;
+    lastCpuSample = { busy, total };
+    const dTotal = prev ? total - prev.total : 0;
+    const cpuUsage = dTotal > 0
+      ? Math.max(0, Math.min(100, Math.round(((busy - prev.busy) / dTotal) * 100)))
+      : Math.min(100, Math.round((busy / (total || 1)) * 100));
 
     return {
       cpuUsage,
+      cores: cpus.length,
       memUsage,
       usedMemGB: (usedMem / (1024 ** 3)).toFixed(1),
       totalMemGB: (totalMem / (1024 ** 3)).toFixed(1)
