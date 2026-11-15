@@ -133,6 +133,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   const [audioLevel, setAudioLevel] = useState(0);
   const [conversation, setConversation] = useState<Message[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
+  // Live (interim) speech transcript, shown as a caption while listening
+  const [liveTranscript, setLiveTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [isMuted, setIsMuted] = useState(false);
 
@@ -193,6 +195,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   const updateStatus = useCallback((nextStatus: JarvisStatus) => {
     statusRef.current = nextStatus;
     setStatus(nextStatus);
+    if (nextStatus !== 'listening') setLiveTranscript('');
   }, []);
 
   // Auto Voice Silence Detection Refs
@@ -641,6 +644,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
             }
 
             latestTranscriptRef.current = currentWords;
+            setLiveTranscript(currentWords);
 
             // 2. Wake Word Detection -> Bring App Window to Front
             const wakeCheck = checkWakeWord(currentWords);
@@ -1208,6 +1212,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     audioLevel,
     conversation,
     currentResponse,
+    liveTranscript,
     errorMessage,
     isMuted,
     isAlwaysListening,

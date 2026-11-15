@@ -28,14 +28,14 @@ class ErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div style={{ background: '#0a0a0c', color: '#ff3b30', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: '-apple-system, sans-serif', textAlign: 'center', padding: '20px', boxSizing: 'border-box' }}>
-          <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>JARVIS Başlatma Hatası</h2>
+        <div style={{ background: '#1c1c1e', color: 'rgba(255,255,255,0.92)', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-sans)', textAlign: 'center', padding: '20px', boxSizing: 'border-box' }}>
+          <h2 style={{ fontSize: '17px', fontWeight: 600, letterSpacing: '-0.02em', marginBottom: '8px' }}>JARVIS başlatılamadı</h2>
           <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', maxWidth: '400px', wordBreak: 'break-word', marginBottom: '20px' }}>
             {this.state.error?.message || 'Bilinmeyen bir arayüz hatası oluştu.'}
           </p>
           <button 
             onClick={() => window.location.reload()} 
-            style={{ background: '#00f0ff', color: '#000', border: 'none', padding: '10px 24px', borderRadius: '100px', fontWeight: 600, cursor: 'pointer' }}
+            className="btn btn-primary btn-lg"
           >
             Yeniden Başlat
           </button>
@@ -45,6 +45,11 @@ class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
+}
+
+// Electron renders a native Windows 11 material behind the page; flag it so CSS can let it show through.
+if (typeof window !== 'undefined' && /Electron/i.test(navigator.userAgent)) {
+  document.documentElement.classList.add('is-electron');
 }
 
 ReactDOM.createRoot(document.getElementById('app')!).render(

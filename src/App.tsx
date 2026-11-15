@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useRef, type ReactNode, type CSSProperties } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { Canvas } from '@react-three/fiber';
 import { Orb } from './components/Orb';
@@ -42,9 +42,11 @@ function Sparkline({ data, color, height = 26, width = 85 }: { data: number[]; c
 }
 
 export function App() {
-  const [apiKey, setApiKey] = useState('');
-  const [language, setLanguage] = useState<JarvisLanguage>('tr-TR');
-  const [showSettings, setShowSettings] = useState(true);
+  // Read persisted settings synchronously so the setup sheet never flashes on launch
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('jarvis_api_key') || '');
+  const [language, setLanguage] = useState<JarvisLanguage>(() => (localStorage.getItem('jarvis_language') as JarvisLanguage) || 'tr-TR');
+  const [showSettings, setShowSettings] = useState(() => !localStorage.getItem('jarvis_api_key'));
+  const [hasSavedKey, setHasSavedKey] = useState(() => !!localStorage.getItem('jarvis_api_key'));
   const [showQR, setShowQR] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
@@ -69,23 +71,12 @@ export function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const savedKey = localStorage.getItem('jarvis_api_key');
-    const savedLang = localStorage.getItem('jarvis_language') as JarvisLanguage;
-    if (savedKey) {
-      setApiKey(savedKey);
-      setShowSettings(false);
-    }
-    if (savedLang) {
-      setLanguage(savedLang);
-    }
-  }, []);
-
   const { 
     status, 
     audioLevel,
     conversation,
     currentResponse,
+    liveTranscript,
     errorMessage,
     isMuted,
     isAlwaysListening,
@@ -183,6 +174,14 @@ export function App() {
   const handleSaveSettings = () => {
     localStorage.setItem('jarvis_api_key', apiKey);
     localStorage.setItem('jarvis_language', language);
+    setHasSavedKey(!!apiKey.trim());
+    setShowSettings(false);
+  };
+
+  // Dismiss settings without saving: restore what is persisted
+  const handleCloseSettings = () => {
+    setApiKey(localStorage.getItem('jarvis_api_key') || '');
+    setLanguage((localStorage.getItem('jarvis_language') as JarvisLanguage | null) || 'tr-TR');
     setShowSettings(false);
   };
 
@@ -324,828 +323,682 @@ export function App() {
     sendTextMessage(commandText);
   };
 
-  // Dynamic Center Status Details & Colors
-  const getStatusDetails = () => {
+  const t = (tr: string, en: string) => (language === 'tr-TR' ? tr : en);
+  const isActive = status === 'listening' || status === 'speaking' || status === 'processing';
+
+  // Status capsule content (Dynamic Island–style)
+  const renderCapsuleLead = () => {
     switch (status) {
       case 'listening':
-        return {
-          title: language === 'tr-TR' ? 'DİNLİYOR' : 'LISTENING',
-          subtitle: language === 'tr-TR' ? 'VAD Ses Algılama Aktif' : 'VAD Voice Activity Active',
-          color: '#007aff',
-          bg: 'rgba(0, 122, 255, 0.12)',
-          border: 'rgba(0, 122, 255, 0.35)',
-          glow: 'rgba(0, 122, 255, 0.6)',
-          icon: (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-              <line x1="12" y1="19" x2="12" y2="23"></line>
-              <line x1="8" y1="23" x2="16" y2="23"></line>
-            </svg>
-          )
-        };
-      case 'processing':
-        return {
-          title: language === 'tr-TR' ? 'DÜŞÜNÜYOR' : 'THINKING',
-          subtitle: language === 'tr-TR' ? 'Gemini AI Modeli İşliyor' : 'Gemini AI Model Processing',
-          color: '#30d158',
-          bg: 'rgba(48, 209, 88, 0.12)',
-          border: 'rgba(48, 209, 88, 0.35)',
-          glow: 'rgba(48, 209, 88, 0.6)',
-          icon: (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-            </svg>
-          )
-        };
+        return <Wave level={audioLevel} color="var(--blue)" />;
       case 'speaking':
-        return {
-          title: language === 'tr-TR' ? 'KONUŞUYOR' : 'SPEAKING',
-          subtitle: language === 'tr-TR' ? 'Sesli Yanıt Aktarılıyor' : 'Audio Response Active',
-          color: '#ff9500',
-          bg: 'rgba(255, 149, 0, 0.12)',
-          border: 'rgba(255, 149, 0, 0.35)',
-          glow: 'rgba(255, 149, 0, 0.6)',
-          icon: (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-            </svg>
-          )
-        };
+        return <Wave level={audioLevel} color="var(--orange)" />;
+      case 'processing':
+        return <div className="thinking-dots"><span /><span /><span /></div>;
       case 'error':
-        return {
-          title: language === 'tr-TR' ? 'HATA' : 'ERROR',
-          subtitle: language === 'tr-TR' ? 'Bağlantı Hatası' : 'Connection Error',
-          color: '#ff3b30',
-          bg: 'rgba(255, 59, 48, 0.15)',
-          border: 'rgba(255, 59, 48, 0.4)',
-          glow: 'rgba(255, 59, 48, 0.6)',
-          icon: (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="12"></line>
-              <line x1="12" y1="16" x2="12.01" y2="16"></line>
-            </svg>
-          )
-        };
+        return <span style={{ color: 'var(--red)', display: 'flex' }}><Icon.alert size={18} /></span>;
       default:
-        return {
-          title: language === 'tr-TR' ? 'HAZIR' : 'READY',
-          subtitle: language === 'tr-TR' ? 'Konuşmak için dokun (veya Alt+Space)' : 'Tap to speak (or Alt+Space)',
-          color: '#f5f5f7',
-          bg: 'rgba(255, 255, 255, 0.06)',
-          border: 'rgba(255, 255, 255, 0.14)',
-          glow: 'rgba(0, 0, 0, 0.35)',
-          icon: (
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="12" r="8"></circle>
-            </svg>
-          )
-        };
+        return <span className="capsule-dot" />;
     }
   };
 
-  const statusInfo = getStatusDetails();
+  const renderCapsuleText = () => {
+    switch (status) {
+      case 'listening':
+        return liveTranscript
+          ? <span className="capsule-caption live">{liveTranscript}</span>
+          : <>
+              <span className="capsule-title">{t('Dinliyorum…', 'Listening…')}</span>
+              <span className="capsule-caption">{t('Konuşmaya başlayın', 'Go ahead, I’m listening')}</span>
+            </>;
+      case 'processing':
+        return <span className="capsule-title">{t('Düşünüyor…', 'Thinking…')}</span>;
+      case 'speaking':
+        return currentResponse
+          ? <span className="capsule-caption live">{currentResponse}</span>
+          : <span className="capsule-title">{t('Yanıtlıyor…', 'Responding…')}</span>;
+      case 'error':
+        return <>
+          <span className="capsule-title">{t('Bağlantı sorunu', 'Connection problem')}</span>
+          <span className="capsule-caption">{t('Tekrar denemek için dokunun', 'Tap to try again')}</span>
+        </>;
+      default:
+        return <span className="capsule-title">{t('Konuşmak için dokunun', 'Tap to talk')}</span>;
+    }
+  };
+
+  const formatMessage = (content: string) => {
+    if (content.startsWith('🎤')) {
+      return <span className="msg-meta"><Icon.mic size={14} /> {t('Sesli mesaj', 'Voice message')}</span>;
+    }
+    if (content.startsWith('📷')) {
+      return <span className="msg-meta"><Icon.camera size={14} /> {t('Kamera görüntüsü', 'Camera image')}</span>;
+    }
+    return content;
+  };
+
+  const apps = [
+    { id: 'chrome', name: 'Google Chrome', tint: 'blue', icon: <Icon.globe size={13} />, cmd: 'Tarayıcıyı aç' },
+    { id: 'spotify', name: 'Spotify', tint: 'green', icon: <Icon.music size={13} />, cmd: "Spotify'ı aç" },
+    { id: 'vscode', name: 'VS Code', tint: 'gray', icon: <Icon.code size={13} />, cmd: 'VS Code aç' },
+    { id: 'notepad', name: t('Not Defteri', 'Notepad'), tint: 'yellow', icon: <Icon.doc size={13} />, cmd: 'Not defterini aç' },
+    { id: 'calc', name: t('Hesap Makinesi', 'Calculator'), tint: 'orange', icon: <Icon.calc size={13} />, cmd: 'Hesap makinesi aç' },
+  ];
+
+  const suggestions = [
+    { icon: <Icon.note size={16} />, label: t('Bugünkü hedeflerimi not al', 'Take a note of today’s goals'), cmd: t('Bugünkü hedeflerimi not al', 'Take a note of my goals for today') },
+    { icon: <Icon.clock size={16} />, label: t('10 dakika sonra su içmeyi hatırlat', 'Remind me to drink water in 10 min'), cmd: t('10 dakika sonra bana su içmeyi hatırlat', 'Remind me to drink water in 10 minutes') },
+    { icon: <Icon.music size={16} />, label: t('Spotify’da müzik başlat', 'Play music on Spotify'), cmd: t("Spotify'ı aç ve müziği başlat", 'Open Spotify and start the music') },
+  ];
+
+  const panelSpring = { type: 'spring', bounce: 0, duration: 0.42 } as const;
+  const layoutSpring = { type: 'spring', bounce: 0.12, duration: 0.45 } as const;
 
   return (
-    <div className="app-container" style={{ display: 'flex', flexDirection: 'column' }}>
-      {/* Custom Titlebar */}
+    <MotionConfig reducedMotion="user">
+    <div className="app-container">
+      {/* Window chrome */}
       <div className="titlebar">
-        <div className="titlebar-title">JARVIS 2.0</div>
+        <div className="titlebar-title">JARVIS</div>
         <div className="titlebar-controls">
-          <button className="titlebar-btn" onClick={() => handleWindowControl('minimize')}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <button className="titlebar-btn" aria-label={t('Küçült', 'Minimize')} onClick={() => handleWindowControl('minimize')}>
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="5" x2="10" y2="5" stroke="currentColor" strokeWidth="1" /></svg>
           </button>
-          <button className="titlebar-btn" onClick={() => handleWindowControl('maximize')}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
+          <button className="titlebar-btn" aria-label={t('Büyüt', 'Maximize')} onClick={() => handleWindowControl('maximize')}>
+            <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
           </button>
-          <button className="titlebar-btn close" onClick={() => handleWindowControl('close')}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          <button className="titlebar-btn close" aria-label={t('Kapat', 'Close')} onClick={() => handleWindowControl('close')}>
+            <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" strokeWidth="1" /></svg>
           </button>
         </div>
       </div>
 
-      <header className="header" style={{ display: 'flex', gap: '10px', right: showChat ? '346px' : '16px', transition: 'right 0.3s ease', zIndex: 100 }}>
-        {/* Always-On Wake Word (Sürekli Dinleme) Toggle Button */}
-        <button 
-          onClick={toggleAlwaysListening}
-          title={isAlwaysListening ? "Sürekli Dinleme (Wake Word: AÇIK)" : "Sürekli Dinlemeyi Aç (Wake Word: 'Jarvis')"}
-          style={{ 
-            background: isAlwaysListening ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.05)', 
-            border: isAlwaysListening ? '1px solid rgba(255, 255, 255, 0.28)' : '1px solid rgba(255, 255, 255, 0.08)', 
-            borderRadius: '50%',
-            padding: '6px',
-            color: isAlwaysListening ? '#ffffff' : 'var(--text-secondary)', 
-            cursor: 'pointer', 
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-            <line x1="12" y1="19" x2="12" y2="22"></line>
-          </svg>
-        </button>
-
-        {/* Microphone Toggle Mute Button */}
-        <button 
-          onClick={toggleMute}
-          title={isMuted ? "Mikrofonu Aç" : "Mikrofonu Kapat"}
-          style={{ 
-            background: isMuted ? 'rgba(255, 59, 48, 0.15)' : 'rgba(255, 255, 255, 0.05)', 
-            border: isMuted ? '1px solid rgba(255, 59, 48, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)', 
-            borderRadius: '50%',
-            padding: '6px',
-            color: isMuted ? '#ff3b30' : 'var(--text-secondary)', 
-            cursor: 'pointer', 
-            transition: 'all 0.2s ease',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {isMuted ? (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-          ) : (
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
-          )}
-        </button>
-
-        {/* Screen Capture & Vision Button */}
-        <button 
-          onClick={handleAnalyzeScreen}
-          title="Ekranı İncele (Vision)"
-          style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '50%', padding: '6px', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
-          onMouseOver={(e) => { e.currentTarget.style.color = '#ffffff'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.22)'; }}
-          onMouseOut={(e) => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)'; }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-        </button>
-
-        {/* Toggle Right Chat Panel */}
-        <button 
-          onClick={() => setShowChat(!showChat)}
-          title="Sohbet Paneli"
-          style={{ background: showChat ? 'rgba(255, 255, 255, 0.14)' : 'rgba(255, 255, 255, 0.05)', border: showChat ? '1px solid rgba(255, 255, 255, 0.24)' : '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '50%', padding: '6px', color: showChat ? '#ffffff' : 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-          </svg>
-        </button>
-
-        {/* Camera Toggle Button */}
-        <button 
-          onClick={handleToggleCamera}
-          title="Kamerayı Aç"
-          style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '50%', padding: '6px', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
-          onMouseOver={(e) => e.currentTarget.style.color = 'white'}
-          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-            <circle cx="12" cy="13" r="4"></circle>
-          </svg>
-        </button>
-
-        {/* Mobile QR Button */}
-        <button 
-          onClick={handleOpenQR}
-          title="Telefondan Bağlan"
-          style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '50%', padding: '6px', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
-          onMouseOver={(e) => e.currentTarget.style.color = 'white'}
-          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
-            <line x1="12" y1="18" x2="12.01" y2="18"></line>
-          </svg>
-        </button>
-
-        {/* Settings Button */}
-        <button 
-          onClick={() => setShowSettings(true)}
-          style={{ background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '50%', padding: '6px', color: 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s' }}
-          onMouseOver={(e) => e.currentTarget.style.color = 'white'}
-          onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-        </button>
-      </header>
-
-      <AnimatePresence>
-        {errorMessage && (
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            style={{ 
-              position: 'absolute', top: '50px', left: '50%', transform: 'translateX(-50%)',
-              background: 'rgba(255, 59, 48, 0.15)', border: '1px solid rgba(255, 59, 48, 0.3)',
-              backdropFilter: 'blur(12px)',
-              padding: '10px 20px', borderRadius: '100px', color: '#ff3b30', zIndex: 100,
-              display: 'flex', alignItems: 'center', gap: '12px', fontSize: '13px'
-            }}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
-              JARVIS Bağlantı Hatası
-            </span>
-            <span style={{ opacity: 0.8, maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {errorMessage}
-            </span>
-            <button 
-              onClick={startListening}
-              style={{
-                background: 'rgba(255, 59, 48, 0.25)', color: '#ff3b30',
-                border: 'none', padding: '4px 12px', borderRadius: '100px',
-                cursor: 'pointer', fontWeight: 600, fontSize: '12px'
-              }}
-            >
-              Tekrar Dene
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div style={{ display: 'flex', flex: 1, height: 'calc(100vh - 36px)', marginTop: '36px' }}>
-        {/* Left Sidebar - Apple macOS / visionOS Glassmorphism */}
+      <div className="layout">
+        {/* Sidebar — macOS source list */}
         <aside className="left-sidebar">
-          {/* Premium OS Performance & Sparkline Metrics */}
-          <div className="sidebar-section-title">Sistem & Performans</div>
-          <div className="os-perf-card">
-            {/* CPU Metric with Real-time Sparkline */}
-            <div className="os-metric-row">
-              <div className="metric-info">
-                <div className="metric-title-group">
-                  <span className="metric-tag">CPU</span>
-                  <span className="metric-badge-status optimal">OPTIMAL</span>
-                </div>
-                <div className="metric-val-large" style={{ color: '#f5f5f7' }}>
-                  {systemStats.cpuUsage}<span>%</span>
-                </div>
+          <div className="sidebar-section-title">{t('Sistem', 'System')}</div>
+          <div className="sys-widget">
+            <div className="sys-row">
+              <div className="sys-meta">
+                <span className="sys-label">CPU</span>
+                <span className="sys-value">{systemStats.cpuUsage}<small>%</small></span>
               </div>
-              <div className="metric-sparkline-box">
-                <Sparkline data={cpuHistory} color="#f5f5f7" />
-              </div>
+              <Sparkline data={cpuHistory} color="#0a84ff" width={96} height={28} />
             </div>
-
-            {/* RAM Metric with Real-time Sparkline */}
-            <div className="os-metric-row" style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
-              <div className="metric-info">
-                <div className="metric-title-group">
-                  <span className="metric-tag">RAM</span>
-                  <span className="metric-gb-sub">{systemStats.usedMemGB} / {systemStats.totalMemGB} GB</span>
-                </div>
-                <div className="metric-val-large" style={{ color: '#30d158' }}>
-                  {systemStats.memUsage}<span>%</span>
-                </div>
+            <div className="sys-row">
+              <div className="sys-meta">
+                <span className="sys-label">{t('Bellek', 'Memory')}</span>
+                <span className="sys-value">{systemStats.memUsage}<small>%</small></span>
+                <span className="sys-sub">{systemStats.usedMemGB} / {systemStats.totalMemGB} GB</span>
               </div>
-              <div className="metric-sparkline-box">
-                <Sparkline data={ramHistory} color="#30d158" />
-              </div>
+              <Sparkline data={ramHistory} color="#30d158" width={96} height={28} />
             </div>
           </div>
 
-          {/* Modern Applications with Apple Active Selection & Subtitles */}
-          <div className="sidebar-section-title" style={{ marginTop: '16px' }}>Uygulamalar</div>
-          <div className="modern-app-list">
-            {/* Chrome */}
-            <button 
-              className={`modern-app-btn ${activeApp === 'chrome' ? 'active' : ''}`}
-              onClick={() => handleAppLaunch('chrome', 'Tarayıcıyı aç')}
-            >
-              <div className="active-cyan-bar" />
-              <div className="app-icon-badge chrome">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-              </div>
-              <div className="app-meta">
-                <span className="app-name">Google Chrome</span>
-                <span className="app-sub">Web Tarayıcı</span>
-              </div>
-              {activeApp === 'chrome' && <span className="app-live-indicator" />}
-            </button>
+          <div className="sidebar-section-title">{t('Uygulamalar', 'Apps')}</div>
+          <div className="nav-list">
+            {apps.map(a => (
+              <button
+                key={a.id}
+                className={`nav-row ${activeApp === a.id ? 'active' : ''}`}
+                onClick={() => handleAppLaunch(a.id, a.cmd)}
+              >
+                <span className={`nav-icon ${a.tint}`}>{a.icon}</span>
+                <span className="row-label">{a.name}</span>
+                {activeApp === a.id && <span className="live-dot" />}
+              </button>
+            ))}
+          </div>
 
-            {/* Spotify */}
-            <button 
-              className={`modern-app-btn ${activeApp === 'spotify' ? 'active' : ''}`}
-              onClick={() => handleAppLaunch('spotify', "Spotify'ı aç")}
-            >
-              <div className="active-cyan-bar" />
-              <div className="app-icon-badge spotify">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-              </div>
-              <div className="app-meta">
-                <span className="app-name">Spotify</span>
-                <span className="app-sub">Müzik Çalar</span>
-              </div>
-              {activeApp === 'spotify' && <span className="app-live-indicator" />}
+          <div className="sidebar-section-title">{t('Medya', 'Media')}</div>
+          <div className="media-group">
+            <button className="media-btn" onClick={() => handleMediaControl('voldown')} title={t('Sesi kıs', 'Volume down')} aria-label={t('Sesi kıs', 'Volume down')}>
+              <Icon.volLow size={16} />
             </button>
-
-            {/* VS Code */}
-            <button 
-              className={`modern-app-btn ${activeApp === 'vscode' ? 'active' : ''}`}
-              onClick={() => handleAppLaunch('vscode', 'VS Code aç')}
-            >
-              <div className="active-cyan-bar" />
-              <div className="app-icon-badge vscode">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-              </div>
-              <div className="app-meta">
-                <span className="app-name">VS Code</span>
-                <span className="app-sub">Kod Editörü</span>
-              </div>
-              {activeApp === 'vscode' && <span className="app-live-indicator" />}
+            <button className="media-btn primary" onClick={() => handleMediaControl('playpause')} title={t('Oynat / Duraklat', 'Play / Pause')} aria-label={t('Oynat / Duraklat', 'Play / Pause')}>
+              <Icon.playPause size={18} />
             </button>
-
-            {/* Not Defteri */}
-            <button 
-              className={`modern-app-btn ${activeApp === 'notepad' ? 'active' : ''}`}
-              onClick={() => handleAppLaunch('notepad', 'Not defterini aç')}
-            >
-              <div className="active-cyan-bar" />
-              <div className="app-icon-badge notepad">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-              </div>
-              <div className="app-meta">
-                <span className="app-name">Not Defteri</span>
-                <span className="app-sub">Hızlı Notlar</span>
-              </div>
-              {activeApp === 'notepad' && <span className="app-live-indicator" />}
+            <button className="media-btn primary" onClick={() => handleMediaControl('next')} title={t('Sonraki', 'Next')} aria-label={t('Sonraki', 'Next')}>
+              <Icon.forward size={18} />
             </button>
-
-            {/* Hesap Makinesi */}
-            <button 
-              className={`modern-app-btn ${activeApp === 'calc' ? 'active' : ''}`}
-              onClick={() => handleAppLaunch('calc', 'Hesap makinesi aç')}
-            >
-              <div className="active-cyan-bar" />
-              <div className="app-icon-badge calc">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="8" y1="6" x2="16" y2="6"></line><line x1="16" y1="14" x2="16" y2="18"></line><path d="M8 10h.01"></path><path d="M12 10h.01"></path><path d="M16 10h.01"></path><path d="M8 14h.01"></path><path d="M12 14h.01"></path><path d="M8 18h.01"></path><path d="M12 18h.01"></path></svg>
-              </div>
-              <div className="app-meta">
-                <span className="app-name">Hesap Makinesi</span>
-                <span className="app-sub">Matematik & Hesap</span>
-              </div>
-              {activeApp === 'calc' && <span className="app-live-indicator" />}
+            <button className="media-btn" onClick={() => handleMediaControl('volup')} title={t('Sesi aç', 'Volume up')} aria-label={t('Sesi aç', 'Volume up')}>
+              <Icon.volHigh size={16} />
             </button>
           </div>
 
-          {/* Media Player Controls */}
-          <div className="sidebar-section-title" style={{ marginTop: '16px' }}>Medya Kontrolü</div>
-          <div style={{ display: 'flex', gap: '6px', marginBottom: '14px' }}>
-            <button className="media-btn" onClick={() => handleMediaControl('playpause')} title="Oynat / Durdur">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <div className="sidebar-section-title">{t('Araçlar', 'Tools')}</div>
+          <div className="nav-list">
+            <button className="nav-row" onClick={handleAnalyzeScreen}>
+              <span className="nav-icon plain"><Icon.display size={16} /></span>
+              <span className="row-label">{t('Ekranı Analiz Et', 'Analyze Screen')}</span>
             </button>
-            <button className="media-btn" onClick={() => handleMediaControl('next')} title="Sonraki Şarkı">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg>
+            <button className={`nav-row ${showCamera ? 'active' : ''}`} onClick={handleToggleCamera}>
+              <span className="nav-icon plain"><Icon.camera size={16} /></span>
+              <span className="row-label">{t('Kamerayla Analiz', 'Camera Analysis')}</span>
             </button>
-            <button className="media-btn" onClick={() => handleMediaControl('volup')} title="Sesi Yükselt">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            <button className={`nav-row ${showNotes ? 'active' : ''}`} onClick={handleLoadNotes}>
+              <span className="nav-icon plain"><Icon.note size={16} /></span>
+              <span className="row-label">{t('Notlar', 'Notes')}</span>
             </button>
-            <button className="media-btn" onClick={() => handleMediaControl('voldown')} title="Sesi Kıs">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon></svg>
-            </button>
-          </div>
-
-          <div className="sidebar-section-title" style={{ marginTop: '6px' }}>Hızlı Araçlar</div>
-          <div className="sidebar-actions">
-            <button className="sidebar-btn" onClick={handleAnalyzeScreen}>
-              <span className="btn-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-              </span>
-              Ekran Analizi (Vision)
-            </button>
-            <button className="sidebar-btn" onClick={handleLoadNotes}>
-              <span className="btn-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-              </span>
-              Sesli Notlarım
-            </button>
-            <button className="sidebar-btn" onClick={handleToggleCamera}>
-              <span className="btn-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-              </span>
-              Kamera Analiz
-            </button>
-            <button className="sidebar-btn" onClick={handleOpenQR}>
-              <span className="btn-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>
-              </span>
-              Mobil Remote
+            <button className={`nav-row ${showQR ? 'active' : ''}`} onClick={handleOpenQR}>
+              <span className="nav-icon plain"><Icon.phone size={16} /></span>
+              <span className="row-label">{t('Telefondan Bağlan', 'Connect Phone')}</span>
             </button>
           </div>
 
-          {/* Single Shaz Agency Signature Footer */}
-          <div className="sidebar-footer" onClick={() => openExternalLink('https://shazagency.com')}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-              <div>
-                <div style={{ fontSize: '9px', color: 'rgba(235, 235, 245, 0.38)', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: '2px' }}>Designed by</div>
-                <div style={{ fontSize: '12px', fontWeight: 600, color: '#f5f5f7', letterSpacing: '0.4px' }}>Shaz Agency</div>
-                <div style={{ fontSize: '10.5px', color: 'rgba(235, 235, 245, 0.48)' }}>shazagency.com</div>
-              </div>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(235, 235, 245, 0.45)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg>
-            </div>
-          </div>
+          <button className="sidebar-footer" onClick={() => openExternalLink('https://shazagency.com')}>
+            Designed by <strong>Shaz Agency</strong>
+            <Icon.arrowUpRight size={11} />
+          </button>
         </aside>
 
-        {/* Main Content Area with 3D Motion Exploration Orb & Central Live Status System */}
-        <main className="main-content" style={{ flex: 1, paddingBottom: 0 }}>
-          <div className="ai-presence" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-            {/* Background FUI Rotating Grid & Compass Elements */}
+        {/* Stage */}
+        <main className="main-content">
+          {/* Toolbar */}
+          <div className="toolbar" role="toolbar">
+            <button
+              className={`tool-btn ${isAlwaysListening ? 'on' : ''}`}
+              onClick={toggleAlwaysListening}
+              data-tip={isAlwaysListening ? t('Sürekli dinleme açık', 'Always listening on') : t('“Jarvis” ile uyandır', 'Wake with “Jarvis”')}
+              aria-pressed={isAlwaysListening}
+              aria-label={t('Sürekli dinleme', 'Always listening')}
+            >
+              <Icon.waveform size={17} />
+            </button>
+            <button
+              className={`tool-btn ${isMuted ? 'danger' : ''}`}
+              onClick={toggleMute}
+              data-tip={isMuted ? t('Mikrofonu aç', 'Unmute') : t('Mikrofonu kapat', 'Mute')}
+              aria-pressed={isMuted}
+              aria-label={t('Mikrofon', 'Microphone')}
+            >
+              {isMuted ? <Icon.micOff size={17} /> : <Icon.mic size={17} />}
+            </button>
+            <span className="toolbar-divider" />
+            <button
+              className={`tool-btn ${showChat ? 'on' : ''}`}
+              onClick={() => setShowChat(!showChat)}
+              data-tip={t('Sohbet', 'Chat')}
+              aria-pressed={showChat}
+              aria-label={t('Sohbet', 'Chat')}
+            >
+              <Icon.bubble size={17} />
+            </button>
+            <button
+              className="tool-btn"
+              onClick={() => setShowSettings(true)}
+              data-tip={t('Ayarlar', 'Settings')}
+              aria-label={t('Ayarlar', 'Settings')}
+            >
+              <Icon.gear size={17} />
+            </button>
+          </div>
+
+          {/* Error toast */}
+          <AnimatePresence>
+            {errorMessage && (
+              <motion.div
+                className="toast"
+                role="alert"
+                style={{ x: '-50%' }}
+                initial={{ opacity: 0, y: -16, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -16, scale: 0.96 }}
+                transition={panelSpring}
+              >
+                <span className="toast-icon"><Icon.alert size={16} /></span>
+                <span className="toast-text">
+                  <strong>{t('Bağlantı hatası', 'Connection error')}</strong>
+                  <span>{errorMessage}</span>
+                </span>
+                <button className="btn btn-plain" onClick={startListening}>{t('Tekrar Dene', 'Try Again')}</button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="ai-presence">
             <div className="fui-radar-backdrop" />
 
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {/* Left Telemetry HUD */}
-              <div className="fui-telemetry left">
-                <div className="fui-item">
-                  <span className="fui-label">FREQ</span>
-                  <span className="fui-val">432.8 Hz</span>
-                </div>
-                <div className="fui-item">
-                  <span className="fui-label">AUDIO FLUX</span>
-                  <span className="fui-val">{Math.round(audioLevel * 100)}%</span>
-                </div>
-                <div className="fui-item">
-                  <span className="fui-label">QUANTUM</span>
-                  <span className="fui-val" style={{ color: '#00f0ff' }}>STABLE</span>
-                </div>
-              </div>
+            {/* 3D Visualizer Orb Canvas (unchanged) */}
+            <motion.div
+              className="orb-container"
+              onClick={handleOrbClick}
+              whileHover={{ scale: 1.03 }}
+              whileTap={{ scale: 0.96 }}
+              style={{ cursor: 'pointer', width: '380px', height: '380px', position: 'relative', zIndex: 2 }}
+            >
+              <Canvas camera={{ position: [0, 0, 4.3], fov: 46 }}>
+                <ambientLight intensity={0.6} />
+                <pointLight position={[10, 10, 10]} intensity={1.5} color="#00f0ff" />
+                <pointLight position={[-10, -10, -10]} intensity={0.8} color="#ff007f" />
+                <pointLight position={[0, 0, 5]} intensity={0.5} />
+                <Orb status={status} audioLevel={audioLevel} />
+              </Canvas>
+            </motion.div>
 
-              {/* 3D Visualizer Orb Canvas */}
-              <motion.div 
-                className="orb-container"
+            {/* Status capsule — fixed-height slot keeps the orb from shifting between states */}
+            <div className="capsule-slot">
+              <motion.div
+                layout
+                className={`status-capsule ${status}`}
                 onClick={handleOrbClick}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
-                style={{ cursor: 'pointer', width: '380px', height: '380px', position: 'relative', zIndex: 2 }}
+                transition={layoutSpring}
+                style={{ borderRadius: 22 }}
+                whileTap={{ scale: 0.97 }}
+                role="button"
+                aria-live="polite"
               >
-                <Canvas camera={{ position: [0, 0, 4.3], fov: 46 }}>
-                  <ambientLight intensity={0.6} />
-                  <pointLight position={[10, 10, 10]} intensity={1.5} color="#00f0ff" />
-                  <pointLight position={[-10, -10, -10]} intensity={0.8} color="#ff007f" />
-                  <pointLight position={[0, 0, 5]} intensity={0.5} />
-                  <Orb status={status} audioLevel={audioLevel} />
-                </Canvas>
+                <motion.div layout="position" className="capsule-lead">{renderCapsuleLead()}</motion.div>
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <motion.div
+                    key={status}
+                    layout="position"
+                    className="capsule-text"
+                    initial={{ opacity: 0, filter: 'blur(4px)' }}
+                    animate={{ opacity: 1, filter: 'blur(0px)' }}
+                    exit={{ opacity: 0, filter: 'blur(4px)' }}
+                    transition={{ duration: 0.18 }}
+                  >
+                    {renderCapsuleText()}
+                  </motion.div>
+                </AnimatePresence>
+                {status === 'idle' && <motion.span layout="position" className="kbd">Alt + Space</motion.span>}
+                {isActive && (
+                  <motion.button
+                    layout="position"
+                    className="capsule-stop"
+                    onClick={(e) => { e.stopPropagation(); stopVoiceChat(); }}
+                    title={t('Durdur (Esc)', 'Stop (Esc)')}
+                    aria-label={t('Durdur', 'Stop')}
+                    initial={{ opacity: 0, scale: 0.6 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="2.5" fill="currentColor" /></svg>
+                  </motion.button>
+                )}
               </motion.div>
-
-              {/* Right Telemetry HUD */}
-              <div className="fui-telemetry right">
-                <div className="fui-item">
-                  <span className="fui-label">MODE</span>
-                  <span className="fui-val">VAD_AUDIO</span>
-                </div>
-                <div className="fui-item">
-                  <span className="fui-label">LATENCY</span>
-                  <span className="fui-val">12 ms</span>
-                </div>
-                <div className="fui-item">
-                  <span className="fui-label">PROTOCOL</span>
-                  <span className="fui-val" style={{ color: '#30d158' }}>ACTIVE</span>
-                </div>
+              <div className="stage-hint" style={{ visibility: isAlwaysListening && status === 'idle' ? 'visible' : 'hidden' }}>
+                {t('Sürekli dinleme açık — “Jarvis” demeniz yeterli', 'Always listening — just say “Jarvis”')}
               </div>
             </div>
-            
-            {/* Dynamic Center JARVIS Status System HUD Widget */}
-            <motion.div 
-              className="center-hud-status-card"
-              onClick={handleOrbClick}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              style={{
-                borderColor: statusInfo.border,
-                boxShadow: `0 8px 28px ${statusInfo.glow}`,
-                background: statusInfo.bg
-              }}
-            >
-              <div className="hud-status-glow-dot" style={{ background: statusInfo.color }} />
-              <div className="hud-status-text-block">
-                <div className="hud-status-title-row">
-                  <span className="hud-status-title" style={{ color: statusInfo.color }}>
-                    {statusInfo.icon} {statusInfo.title}
-                  </span>
-                  {(status === 'listening' || status === 'speaking') && (
-                    <div className="hud-live-soundwaves">
-                      <span style={{ height: `${Math.max(4, audioLevel * 18)}px`, background: statusInfo.color }} />
-                      <span style={{ height: `${Math.max(6, audioLevel * 24)}px`, background: statusInfo.color }} />
-                      <span style={{ height: `${Math.max(4, audioLevel * 16)}px`, background: statusInfo.color }} />
-                    </div>
-                  )}
-                  {(status === 'speaking' || status === 'listening' || status === 'processing') && (
-                    <button 
-                      className="hud-stop-btn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        stopVoiceChat();
-                      }}
-                      title="Sohbeti Durdur (Escape)"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
-                      Durdur
-                    </button>
-                  )}
-                </div>
-                <span className="hud-status-subtitle">{statusInfo.subtitle}</span>
-              </div>
-            </motion.div>
           </div>
         </main>
 
-        {/* Right Collapsible Chat Drawer */}
-        <AnimatePresence>
+        {/* Chat panel */}
+        <AnimatePresence initial={false}>
           {showChat && (
-            <motion.aside 
-              initial={{ x: 350, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: 350, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="chat-sidebar"
+            <motion.div
+              className="chat-shell"
+              initial={{ width: 0 }}
+              animate={{ width: 340 }}
+              exit={{ width: 0 }}
+              transition={panelSpring}
             >
-              <div className="chat-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#30d158' }} />
-                  <span style={{ fontWeight: 600, letterSpacing: '0.3px', color: '#f5f5f7' }}>Sohbet & Bellek</span>
+              <aside className="chat-sidebar">
+                <div className="chat-header">
+                  <span className="chat-title">{t('Sohbet', 'Chat')}</span>
+                  <button className="icon-btn" onClick={() => setShowChat(false)} aria-label={t('Sohbeti kapat', 'Close chat')}>
+                    <Icon.close size={12} />
+                  </button>
                 </div>
-                <button className="titlebar-btn" onClick={() => setShowChat(false)}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-              </div>
 
-              <div className="chat-messages">
-                {/* Rich Empty State when conversation has not started */}
-                {conversation.length === 0 && (
-                  <div className="chat-empty-state">
-                    <div className="holo-avatar-container">
-                      <div className="holo-avatar-core">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f5f5f7" strokeWidth="1.6">
-                          <circle cx="12" cy="12" r="9"></circle>
-                          <path d="M12 3v18"></path>
-                          <path d="M3 12h18"></path>
-                          <circle cx="12" cy="12" r="3" fill="#f5f5f7" fillOpacity="0.25"></circle>
-                        </svg>
+                <div className="chat-messages">
+                  {conversation.length === 0 && (
+                    <div className="chat-empty-state">
+                      <div className="chat-empty-title">{t('Size nasıl yardımcı olabilirim?', 'How can I help?')}</div>
+                      <p className="chat-empty-desc">
+                        {t('Konuşmak için küreye dokunun ya da aşağıya yazın.', 'Tap the orb to talk, or type below.')}
+                      </p>
+                      <div className="suggestion-list">
+                        {suggestions.map(sg => (
+                          <button key={sg.label} className="suggestion" onClick={() => sendTextMessage(sg.cmd)}>
+                            {sg.icon}
+                            <span>{sg.label}</span>
+                            <span className="chev"><Icon.chevron size={12} /></span>
+                          </button>
+                        ))}
                       </div>
-                      <div className="holo-orbit-ring" />
                     </div>
+                  )}
 
-                    <div className="chat-empty-title">JARVIS 2.0</div>
-                    <div className="chat-empty-badge">SİSTEM ÇEVRİMİÇİ</div>
-                    <p className="chat-empty-desc">
-                      Sistem hazır ve dinlemede. Sesli komut verebilir veya aşağıdaki hızlı komutları kullanabilirsiniz.
-                    </p>
+                  {conversation.map((msg, i) => {
+                    const prev = conversation[i - 1];
+                    const next = conversation[i + 1];
+                    const runStart = !prev || prev.role !== msg.role;
+                    const tail = !next || next.role !== msg.role;
+                    return (
+                      <motion.div
+                        key={i}
+                        className={`chat-bubble ${msg.role} ${runStart ? 'run-start' : ''} ${tail ? 'tail' : ''}`}
+                        initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ type: 'spring', bounce: 0, duration: 0.3 }}
+                        style={{ transformOrigin: msg.role === 'user' ? 'bottom right' : 'bottom left' }}
+                      >
+                        {formatMessage(msg.content)}
+                      </motion.div>
+                    );
+                  })}
+                  <div ref={chatEndRef} />
+                </div>
 
-                    {/* Quick Command Suggestion Chips with Clean SVG Icons */}
-                    <div className="quick-command-grid">
-                      <button className="quick-chip" onClick={() => sendTextMessage("Tarayıcıyı aç")}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                        <span>Tarayıcıyı Aç</span>
-                      </button>
-                      <button className="quick-chip" onClick={handleAnalyzeScreen}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
-                        <span>Ekranı İncele</span>
-                      </button>
-                      <button className="quick-chip" onClick={() => sendTextMessage("Spotify'ı aç ve müziği başlat")}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                        <span>Müziği Başlat</span>
-                      </button>
-                      <button className="quick-chip" onClick={() => sendTextMessage("Bugünkü hedeflerimi not al")}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                        <span>Not Ekle</span>
-                      </button>
-                      <button className="quick-chip" onClick={() => sendTextMessage("10 dakika sonra bana su içmeyi hatırlat")}>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        <span>Hatırlatıcı Kur</span>
-                      </button>
-                    </div>
+                <div className="chat-input-container">
+                  <div className="chat-input-wrap">
+                    <input
+                      type="text"
+                      className="chat-input"
+                      placeholder={t('JARVIS’e yazın', 'Message JARVIS')}
+                      value={textInput}
+                      onChange={(e) => setTextInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
+                    />
+                    <AnimatePresence>
+                      {textInput.trim() && (
+                        <motion.button
+                          className="chat-send-btn"
+                          onClick={handleSendText}
+                          aria-label={t('Gönder', 'Send')}
+                          initial={{ opacity: 0, scale: 0.5 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.5 }}
+                          transition={{ type: 'spring', bounce: 0.2, duration: 0.28 }}
+                          whileTap={{ scale: 0.9 }}
+                        >
+                          <Icon.arrowUp size={15} />
+                        </motion.button>
+                      )}
+                    </AnimatePresence>
                   </div>
-                )}
-
-                {conversation.map((msg, i) => (
-                  <div key={i} className={`chat-bubble ${msg.role}`}>
-                    {msg.content}
-                  </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
-
-              <div className="chat-input-container">
-                <input 
-                  type="text"
-                  className="chat-input"
-                  placeholder="Komut veya mesaj yazın..."
-                  value={textInput}
-                  onChange={(e) => setTextInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
-                />
-                <button className="chat-send-btn" onClick={handleSendText} title="Gönder">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                </button>
-              </div>
-            </motion.aside>
+                </div>
+              </aside>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Voice Notes Modal */}
-      {showNotes && (
-        <div className="modal-overlay" onClick={() => setShowNotes(false)}>
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '520px', maxHeight: '80vh', overflowY: 'auto' }}
-          >
-            <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: 0, fontSize: '18px', fontWeight: 600, marginBottom: '16px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f5f5f7" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-              Sesli Not Defterim
-            </h2>
-            
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-              <input 
-                type="text"
-                className="input-field"
-                placeholder="Yeni not ekle..."
-                value={newNoteText}
-                onChange={(e) => setNewNoteText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
-              />
-              <button className="save-btn" onClick={handleAddNote} style={{ width: '90px', marginTop: 0 }}>Ekle</button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {notes.length === 0 && (
-                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', textAlign: 'center', padding: '20px' }}>
-                  Henüz kaydedilmiş bir notunuz yok.
-                </div>
-              )}
-              {notes.map(note => (
-                <div key={note.id} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ fontSize: '13px', color: '#fff', marginBottom: '4px' }}>{note.text}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{note.date}</div>
-                  </div>
-                  <button onClick={() => handleDeleteNote(note.id)} style={{ background: 'none', border: 'none', color: '#ff3b30', cursor: 'pointer', opacity: 0.7 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button className="save-btn" onClick={() => setShowNotes(false)} style={{ marginTop: '20px', background: 'rgba(255,255,255,0.1)', color: '#fff' }}>
-              Kapat
-            </button>
-          </motion.div>
+      {/* Notes */}
+      <Sheet open={showNotes} onClose={() => setShowNotes(false)} width={480}>
+        <div className="sheet-header">
+          <div>
+            <h2 className="sheet-title">{t('Notlar', 'Notes')}</h2>
+            <p className="sheet-subtitle">{t('Sesle ya da buradan eklediğiniz notlar.', 'Notes you added by voice or here.')}</p>
+          </div>
+          <button className="btn btn-plain" onClick={() => setShowNotes(false)}>{t('Bitti', 'Done')}</button>
         </div>
-      )}
 
-      {/* Camera Preview Modal */}
-      {showCamera && (
-        <div className="modal-overlay" onClick={handleToggleCamera}>
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ textAlign: 'center', maxWidth: '480px' }}
-          >
-            <h2 style={{ marginTop: 0, fontSize: '18px', fontWeight: 500, marginBottom: '16px' }}>JARVIS Gözü (Kamera)</h2>
-            <div style={{ background: '#000', borderRadius: '16px', overflow: 'hidden', height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <video ref={videoRef} autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            </div>
-            <canvas ref={canvasRef} style={{ display: 'none' }} />
+        <div className="group">
+          <div className="group-row">
+            <input
+              type="text"
+              className="text-field"
+              placeholder={t('Yeni not', 'New note')}
+              value={newNoteText}
+              onChange={(e) => setNewNoteText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+            />
+            <button className="btn btn-primary" onClick={handleAddNote} disabled={!newNoteText.trim()}>{t('Ekle', 'Add')}</button>
+          </div>
+        </div>
 
-            <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-              <button 
-                className="save-btn" 
-                onClick={handleCaptureAndAnalyze}
-                style={{ flex: 1, background: '#007aff', color: 'white', marginTop: 0 }}
-              >
-                Görüntüyü Analiz Et
-              </button>
-              <button 
-                className="save-btn" 
-                onClick={handleToggleCamera}
-                style={{ width: '100px', background: 'rgba(255,255,255,0.1)', color: 'white', marginTop: 0 }}
-              >
-                Kapat
+        <div className="group" style={{ marginTop: 12 }}>
+          {notes.length === 0 && <div className="empty-hint">{t('Henüz not yok.', 'No notes yet.')}</div>}
+          {notes.map(note => (
+            <div key={note.id} className="note-row">
+              <div style={{ minWidth: 0 }}>
+                <div className="note-text">{note.text}</div>
+                <div className="note-date">{note.date}</div>
+              </div>
+              <button className="icon-btn note-delete" onClick={() => handleDeleteNote(note.id)} aria-label={t('Notu sil', 'Delete note')} style={{ color: 'var(--red)' }}>
+                <Icon.trash size={13} />
               </button>
             </div>
-          </motion.div>
+          ))}
         </div>
-      )}
+      </Sheet>
 
-      {/* QR Mobile Modal */}
-      {showQR && qrData && (
-        <div className="modal-overlay" onClick={() => setShowQR(false)}>
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-            style={{ textAlign: 'center' }}
-          >
-            <h2 style={{ marginTop: 0, fontSize: '20px', fontWeight: 500 }}>Telefondan Bağlan</h2>
-            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Telefonunuzla aynı Wi-Fi ağındayken QR kodu okutun.
+      {/* Camera */}
+      <Sheet open={showCamera} onClose={handleToggleCamera} width={520}>
+        <div className="sheet-header">
+          <div>
+            <h2 className="sheet-title">{t('Kamerayla Analiz', 'Camera Analysis')}</h2>
+            <p className="sheet-subtitle">{t('Görüntüyü yakalayın, JARVIS ne gördüğünü anlatsın.', 'Capture a frame and JARVIS will describe what it sees.')}</p>
+          </div>
+        </div>
+        <div className="camera-frame">
+          <video ref={videoRef} autoPlay playsInline />
+        </div>
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        <div className="sheet-footer">
+          <button className="btn btn-secondary" onClick={handleToggleCamera}>{t('Vazgeç', 'Cancel')}</button>
+          <button className="btn btn-primary" onClick={handleCaptureAndAnalyze}>{t('Analiz Et', 'Analyze')}</button>
+        </div>
+      </Sheet>
+
+      {/* Phone */}
+      <Sheet open={showQR && !!qrData} onClose={() => setShowQR(false)} width={380}>
+        <div className="sheet-header">
+          <div>
+            <h2 className="sheet-title">{t('Telefondan Bağlan', 'Connect Your Phone')}</h2>
+            <p className="sheet-subtitle">{t('Aynı Wi‑Fi ağındayken QR kodu telefonunuzun kamerasıyla okutun.', 'On the same Wi‑Fi, scan this code with your phone’s camera.')}</p>
+          </div>
+        </div>
+        {qrData && (
+          <div style={{ textAlign: 'center' }}>
+            <div className="qr-frame"><QRCodeSVG value={qrData.url} size={188} /></div>
+            <div className="qr-url">{qrData.url}</div>
+          </div>
+        )}
+        <div className="sheet-footer">
+          <button className="btn btn-primary" onClick={() => setShowQR(false)}>{t('Bitti', 'Done')}</button>
+        </div>
+      </Sheet>
+
+      {/* Settings */}
+      <Sheet open={showSettings} onClose={handleCloseSettings} width={460}>
+        <div className="sheet-header">
+          <div>
+            <h2 className="sheet-title">{hasSavedKey ? t('Ayarlar', 'Settings') : t('JARVIS’e Hoş Geldiniz', 'Welcome to JARVIS')}</h2>
+            <p className="sheet-subtitle">
+              {hasSavedKey
+                ? t('Asistanınızın bağlantısını ve sesini ayarlayın.', 'Adjust your assistant’s connection and voice.')
+                : t('Başlamak için Google Gemini API anahtarınızı girin.', 'Enter your Google Gemini API key to get started.')}
             </p>
-            
-            <div style={{ background: 'white', padding: '16px', borderRadius: '16px', display: 'inline-block', marginBottom: '16px' }}>
-              <QRCodeSVG value={qrData.url} size={200} />
-            </div>
-
-            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all', marginBottom: '20px' }}>
-              {qrData.url}
-            </div>
-
-            <button className="save-btn" onClick={() => setShowQR(false)}>
-              Kapat
-            </button>
-          </motion.div>
+          </div>
+          <button className="icon-btn" onClick={handleCloseSettings} aria-label={t('Kapat', 'Close')}>
+            <Icon.close size={12} />
+          </button>
         </div>
-      )}
 
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="modal-overlay">
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+        <div className="group-label">{t('Gemini API Anahtarı', 'Gemini API Key')}</div>
+        <div className="group">
+          <div className="group-row stack">
+            <input
+              type="password"
+              className="text-field"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="AIzaSy…"
+              autoFocus={!hasSavedKey}
+            />
+          </div>
+        </div>
+        <div className="group-footnote">
+          {t('Anahtar yalnızca bu cihazda saklanır.', 'The key is stored only on this device.')}{' '}
+          <button className="link-btn" onClick={() => openExternalLink('https://aistudio.google.com/apikey')}>
+            {t('Anahtar al', 'Get a key')}
+          </button>
+        </div>
+
+        <div className="group-label" style={{ marginTop: 16 }}>{t('Genel', 'General')}</div>
+        <div className="group">
+          <div className="group-row">
+            <span>{t('Dil', 'Language')}</span>
+            <Segmented
+              id="lang"
+              value={language}
+              onChange={(v) => setLanguage(v as JarvisLanguage)}
+              options={[{ value: 'tr-TR', label: 'Türkçe' }, { value: 'en-US', label: 'English' }]}
+            />
+          </div>
+        </div>
+
+        <div className="group-label" style={{ marginTop: 16 }}>{t('Ses', 'Voice')}</div>
+        <div className="group">
+          <div className="group-row stack">
+            <div className="row-head">
+              <span>{t('Ton', 'Pitch')}</span>
+              <span className="row-value">{voicePitch.toFixed(2)}</span>
+            </div>
+            <Slider min={0.5} max={1.5} step={0.05} value={voicePitch} onChange={setVoicePitch} />
+          </div>
+          <div className="group-row stack">
+            <div className="row-head">
+              <span>{t('Hız', 'Speed')}</span>
+              <span className="row-value">{voiceRate.toFixed(2)}×</span>
+            </div>
+            <Slider min={0.5} max={1.5} step={0.05} value={voiceRate} onChange={setVoiceRate} />
+          </div>
+        </div>
+
+        <div className="sheet-footer">
+          <button className="btn btn-secondary btn-lg" onClick={handleCloseSettings}>
+            {hasSavedKey ? t('Vazgeç', 'Cancel') : t('Şimdi Değil', 'Not Now')}
+          </button>
+          <button className="btn btn-primary btn-lg" onClick={handleSaveSettings} disabled={!apiKey.trim()}>
+            {hasSavedKey ? t('Kaydet', 'Save') : t('Kaydet ve Başla', 'Save and Start')}
+          </button>
+        </div>
+      </Sheet>
+    </div>
+    </MotionConfig>
+  );
+}
+
+/* ==========================================================================
+   UI primitives
+   ========================================================================== */
+
+const sheetSpring = { type: 'spring', bounce: 0, duration: 0.34 } as const;
+
+function Sheet({ open, onClose, width = 440, children }: { open: boolean; onClose: () => void; width?: number; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="modal-overlay"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={onClose}
+        >
+          <motion.div
             className="modal-content"
+            role="dialog"
+            aria-modal="true"
+            style={{ maxWidth: width }}
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 6 }}
+            transition={sheetSpring}
+            onClick={(e) => e.stopPropagation()}
           >
-            <h2 style={{ marginTop: 0, fontSize: '20px', fontWeight: 500 }}>{language === 'tr-TR' ? 'JARVIS Kurulumu' : 'JARVIS Setup'}</h2>
-            
-            <div style={{ marginTop: '24px' }}>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Google Gemini API Key</label>
-              <input
-                type="password"
-                className="input-field"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="AIzaSy..."
-              />
-            </div>
-
-            <div style={{ marginTop: '16px' }}>
-              <label style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{language === 'tr-TR' ? 'Dil / Language' : 'Language / Dil'}</label>
-              <select 
-                className="input-field"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as JarvisLanguage)}
-                style={{ appearance: 'none' }}
-              >
-                <option value="tr-TR">Türkçe</option>
-                <option value="en-US">English</option>
-              </select>
-            </div>
-
-            <div style={{ marginTop: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <span>Ses Tonu (Pitch): {voicePitch.toFixed(2)}</span>
-              </div>
-              <input 
-                type="range" 
-                min="0.5" 
-                max="1.5" 
-                step="0.05" 
-                value={voicePitch} 
-                onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
-                style={{ width: '100%', accentColor: '#f5f5f7', cursor: 'pointer', marginTop: '6px' }}
-              />
-            </div>
-
-            <div style={{ marginTop: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                <span>Ses Hızı (Speed): {voiceRate.toFixed(2)}x</span>
-              </div>
-              <input 
-                type="range" 
-                min="0.5" 
-                max="1.5" 
-                step="0.05" 
-                value={voiceRate} 
-                onChange={(e) => setVoiceRate(parseFloat(e.target.value))}
-                style={{ width: '100%', accentColor: '#f5f5f7', cursor: 'pointer', marginTop: '6px' }}
-              />
-            </div>
-
-            <button className="save-btn" onClick={handleSaveSettings}>
-              {language === 'tr-TR' ? 'Kaydet & Bağlan' : 'Save & Connect'}
-            </button>
+            {children}
           </motion.div>
-        </div>
+        </motion.div>
       )}
+    </AnimatePresence>
+  );
+}
+
+function Segmented({ id, value, options, onChange }: { id: string; value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
+  return (
+    <div className="segmented" role="radiogroup">
+      {options.map(o => (
+        <button
+          key={o.value}
+          role="radio"
+          aria-checked={value === o.value}
+          className={value === o.value ? 'selected' : ''}
+          onClick={() => onChange(o.value)}
+        >
+          {value === o.value && (
+            <motion.span layoutId={`seg-${id}`} className="segmented-thumb" transition={{ type: 'spring', bounce: 0, duration: 0.3 }} />
+          )}
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }
+
+function Slider({ min, max, step, value, onChange }: { min: number; max: number; step: number; value: number; onChange: (v: number) => void }) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <input
+      type="range"
+      className="slider"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(parseFloat(e.target.value))}
+      style={{ '--pct': `${pct}%` } as CSSProperties}
+    />
+  );
+}
+
+function Wave({ level, color }: { level: number; color: string }) {
+  const weights = [0.55, 0.85, 1, 0.8, 0.5];
+  return (
+    <div className="wave" aria-hidden="true">
+      {weights.map((w, i) => (
+        <span key={i} style={{ height: `${Math.max(3, Math.min(18, 3 + level * 30 * w))}px`, background: color }} />
+      ))}
+    </div>
+  );
+}
+
+/* SF Symbols–style line icons */
+type IconProps = { size?: number };
+const svgProps = (size = 16) => ({
+  width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+  strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true,
+});
+
+const Icon = {
+  mic: ({ size }: IconProps) => <svg {...svgProps(size)}><rect x="9" y="2.5" width="6" height="12" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></svg>,
+  micOff: ({ size }: IconProps) => <svg {...svgProps(size)}><path d="M15 9.5V5.5a3 3 0 0 0-5.7-1.3M9 9v2.5a3 3 0 0 0 4.9 2.3M18.5 11a6.4 6.4 0 0 1-1 3.4M5.5 11a6.5 6.5 0 0 0 10.4 5.2M12 17.5V21M3 3l18 18" /></svg>,
+  waveform: ({ size }: IconProps) => <svg {...svgProps(size)}><path d="M3 11v2M7 8v8M11 4v16M15 7v10M19 10v4" /></svg>,
+  bubble: ({ size }: IconProps) => <svg {...svgProps(size)}><path d="M12 4c4.7 0 8.5 3 8.5 6.8s-3.8 6.7-8.5 6.7c-.9 0-1.8-.1-2.6-.3L5 19.5l1-3.4C4.4 14.9 3.5 13 3.5 10.8 3.5 7 7.3 4 12 4z" /></svg>,
+  gear: ({ size }: IconProps) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>,
+  globe: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></svg>,
+  music: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M9 18V5l11-2v13" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="17.5" cy="16" r="2.5" /></svg>,
+  code: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.2}><path d="M16 18l6-6-6-6M8 6l-6 6 6 6" /></svg>,
+  doc: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h4" /></svg>,
+  calc: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M8.5 7.5h7M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></svg>,
+  display: ({ size }: IconProps) => <svg {...svgProps(size)}><rect x="2.5" y="4" width="19" height="13" rx="2" /><path d="M8.5 20.5h7M12 17v3.5" /></svg>,
+  camera: ({ size }: IconProps) => <svg {...svgProps(size)}><path d="M3.5 8.5a2 2 0 0 1 2-2h2l1.5-2h6l1.5 2h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z" /><circle cx="12" cy="13" r="3.5" /></svg>,
+  note: ({ size }: IconProps) => <svg {...svgProps(size)}><rect x="4.5" y="3" width="15" height="18" rx="2.5" /><path d="M8.5 8h7M8.5 12h7M8.5 16h4" /></svg>,
+  phone: ({ size }: IconProps) => <svg {...svgProps(size)}><rect x="6.5" y="2.5" width="11" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></svg>,
+  clock: ({ size }: IconProps) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
+  volLow: ({ size }: IconProps) => <svg {...svgProps(size)}><path d="M4 9.5h3l4.5-4v13l-4.5-4H4z" /><path d="M15 10a3 3 0 0 1 0 4" /></svg>,
+  volHigh: ({ size }: IconProps) => <svg {...svgProps(size)}><path d="M3 9.5h3l4.5-4v13l-4.5-4H3z" /><path d="M14 10a3 3 0 0 1 0 4M17 7.5a7 7 0 0 1 0 9" /></svg>,
+  playPause: ({ size }: IconProps) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2 5.6v12.8a.8.8 0 0 0 1.2.7l9.6-6.4a.8.8 0 0 0 0-1.4L3.2 4.9A.8.8 0 0 0 2 5.6z" /><rect x="15" y="5" width="2.6" height="14" rx="1" /><rect x="19.4" y="5" width="2.6" height="14" rx="1" /></svg>,
+  forward: ({ size }: IconProps) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.5 6.2v11.6a.8.8 0 0 0 1.2.7l8.3-5.8a.8.8 0 0 0 0-1.4L3.7 5.5a.8.8 0 0 0-1.2.7zM12 6.2v11.6a.8.8 0 0 0 1.2.7l8.3-5.8a.8.8 0 0 0 0-1.4l-8.3-5.8a.8.8 0 0 0-1.2.7z" /></svg>,
+  alert: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16.2v.3" /></svg>,
+  close: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.4}><path d="M6 6l12 12M18 6L6 18" /></svg>,
+  chevron: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.2}><path d="M9 5l7 7-7 7" /></svg>,
+  arrowUp: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.4}><path d="M12 19V5M6 11l6-6 6 6" /></svg>,
+  arrowUpRight: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M7 17L17 7M8 7h9v9" /></svg>,
+  trash: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4.5h6V7" /></svg>,
+};
 
 export default App;
