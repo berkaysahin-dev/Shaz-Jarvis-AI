@@ -5,39 +5,44 @@ import { Canvas } from '@react-three/fiber';
 import { Orb } from './components/Orb';
 import { useJarvis, type JarvisLanguage } from './hooks/useJarvis';
 
-// Mini SVG Sparkline Component for OS Performance Gauges
-function Sparkline({ data, color, height = 26, width = 85 }: { data: number[]; color: string; height?: number; width?: number }) {
-  if (!data || data.length < 2) return null;
-  const max = 100;
-  const min = 0;
-  const points = data.map((val, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const clampedVal = Math.max(min, Math.min(max, val));
-    const y = height - ((clampedVal - min) / (max - min)) * (height - 4) - 2;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
+// Apple-style ring gauge (Activity / Batteries widget look)
+function levelColor(value: number) {
+  if (value >= 90) return '#ff453a';
+  if (value >= 70) return '#ff9f0a';
+  return '#30d158';
+}
 
-  const areaPoints = `0,${height} ${points} ${width},${height}`;
-  const gradId = `spark-grad-${color.replace('#', '')}`;
-
+function Gauge({ value, label, detail }: { value: number; label: string; detail: string }) {
+  const size = 58;
+  const stroke = 6;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value));
+  const color = levelColor(pct);
   return (
-    <svg width={width} height={height} style={{ overflow: 'visible', opacity: 0.9 }}>
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.4" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      <polygon points={areaPoints} fill={`url(#${gradId})`} />
-      <polyline
-        fill="none"
-        stroke={color}
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points}
-      />
-    </svg>
+    <div className="gauge">
+      <div className="gauge-ring" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeOpacity={0.18} strokeWidth={stroke} />
+          <circle
+            className="gauge-arc"
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            strokeDasharray={c}
+            strokeDashoffset={c * (1 - pct / 100)}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        </svg>
+        <span className="gauge-value">{Math.round(pct)}<small>%</small></span>
+      </div>
+      <span className="gauge-label">{label}</span>
+      <span className="gauge-detail">{detail}</span>
+    </div>
   );
 }
 
@@ -58,14 +63,12 @@ export function App() {
   const [newNoteText, setNewNoteText] = useState('');
   
   // Real-time system performance & historical sparkline tracking
-  const [systemStats, setSystemStats] = useState<{ cpuUsage: number; memUsage: number; usedMemGB: string; totalMemGB: string }>({
-    cpuUsage: 12,
-    memUsage: 45,
-    usedMemGB: '7.2',
-    totalMemGB: '16.0'
+  const [systemStats, setSystemStats] = useState<{ cpuUsage: number; memUsage: number; usedMemGB: string; totalMemGB: string; cores?: number }>({
+    cpuUsage: 0,
+    memUsage: 0,
+    usedMemGB: '0.0',
+    totalMemGB: '0.0'
   });
-  const [cpuHistory, setCpuHistory] = useState<number[]>([12, 14, 18, 15, 20, 16, 12, 19, 24, 18, 15, 12]);
-  const [ramHistory, setRamHistory] = useState<number[]>([44, 45, 45, 46, 45, 46, 45, 46, 47, 46, 45, 45]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -140,8 +143,6 @@ export function App() {
             const stats = await ipcRenderer.invoke('get-system-stats');
             if (stats) {
               setSystemStats(stats);
-              setCpuHistory(prev => [...prev.slice(1), stats.cpuUsage]);
-              setRamHistory(prev => [...prev.slice(1), stats.memUsage]);
             }
           } catch(e) {}
         };
@@ -378,11 +379,11 @@ export function App() {
   };
 
   const apps = [
-    { id: 'chrome', name: 'Google Chrome', tint: 'blue', icon: <Icon.globe size={13} />, cmd: 'Tarayıcıyı aç' },
-    { id: 'spotify', name: 'Spotify', tint: 'green', icon: <Icon.music size={13} />, cmd: "Spotify'ı aç" },
-    { id: 'vscode', name: 'VS Code', tint: 'gray', icon: <Icon.code size={13} />, cmd: 'VS Code aç' },
-    { id: 'notepad', name: t('Not Defteri', 'Notepad'), tint: 'yellow', icon: <Icon.doc size={13} />, cmd: 'Not defterini aç' },
-    { id: 'calc', name: t('Hesap Makinesi', 'Calculator'), tint: 'orange', icon: <Icon.calc size={13} />, cmd: 'Hesap makinesi aç' },
+    { id: 'chrome', name: 'Google Chrome', icon: <AppIcon.chrome />, cmd: 'Tarayıcıyı aç' },
+    { id: 'spotify', name: 'Spotify', icon: <AppIcon.spotify />, cmd: "Spotify'ı aç" },
+    { id: 'vscode', name: 'VS Code', icon: <AppIcon.vscode />, cmd: 'VS Code aç' },
+    { id: 'notepad', name: t('Not Defteri', 'Notepad'), icon: <AppIcon.notes />, cmd: 'Not defterini aç' },
+    { id: 'calc', name: t('Hesap Makinesi', 'Calculator'), icon: <AppIcon.calculator />, cmd: 'Hesap makinesi aç' },
   ];
 
   const suggestions = [
@@ -418,21 +419,17 @@ export function App() {
         <aside className="left-sidebar">
           <div className="sidebar-section-title">{t('Sistem', 'System')}</div>
           <div className="sys-widget">
-            <div className="sys-row">
-              <div className="sys-meta">
-                <span className="sys-label">CPU</span>
-                <span className="sys-value">{systemStats.cpuUsage}<small>%</small></span>
-              </div>
-              <Sparkline data={cpuHistory} color="#0a84ff" width={96} height={28} />
-            </div>
-            <div className="sys-row">
-              <div className="sys-meta">
-                <span className="sys-label">{t('Bellek', 'Memory')}</span>
-                <span className="sys-value">{systemStats.memUsage}<small>%</small></span>
-                <span className="sys-sub">{systemStats.usedMemGB} / {systemStats.totalMemGB} GB</span>
-              </div>
-              <Sparkline data={ramHistory} color="#30d158" width={96} height={28} />
-            </div>
+            <Gauge
+              value={systemStats.cpuUsage}
+              label={t('İşlemci', 'CPU')}
+              detail={systemStats.cores ? t(`${systemStats.cores} çekirdek`, `${systemStats.cores} cores`) : t('Ölçülüyor', 'Measuring')}
+            />
+            <span className="sys-divider" />
+            <Gauge
+              value={systemStats.memUsage}
+              label={t('Bellek', 'Memory')}
+              detail={`${systemStats.usedMemGB} / ${systemStats.totalMemGB} GB`}
+            />
           </div>
 
           <div className="sidebar-section-title">{t('Uygulamalar', 'Apps')}</div>
@@ -440,10 +437,10 @@ export function App() {
             {apps.map(a => (
               <button
                 key={a.id}
-                className={`nav-row ${activeApp === a.id ? 'active' : ''}`}
+                className={`nav-row app ${activeApp === a.id ? 'active' : ''}`}
                 onClick={() => handleAppLaunch(a.id, a.cmd)}
               >
-                <span className={`nav-icon ${a.tint}`}>{a.icon}</span>
+                <span className="app-icon">{a.icon}</span>
                 <span className="row-label">{a.name}</span>
                 {activeApp === a.id && <span className="live-dot" />}
               </button>
@@ -999,6 +996,74 @@ const Icon = {
   arrowUp: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.4}><path d="M12 19V5M6 11l6-6 6 6" /></svg>,
   arrowUpRight: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M7 17L17 7M8 7h9v9" /></svg>,
   trash: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4.5h6V7" /></svg>,
+};
+
+/* iOS-style app icons (squircle, full-bleed artwork) */
+const AppIcon = {
+  chrome: () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="ai-chrome-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="1" stopColor="#e6e6eb" /></linearGradient>
+      </defs>
+      <rect width="24" height="24" fill="url(#ai-chrome-bg)" />
+      <path d="M12 12L4.2 7.5A9 9 0 0 1 19.8 7.5Z" fill="#ea4335" />
+      <path d="M12 12L19.8 7.5A9 9 0 0 1 12 21Z" fill="#fbbc04" />
+      <path d="M12 12L12 21A9 9 0 0 1 4.2 7.5Z" fill="#34a853" />
+      <circle cx="12" cy="12" r="4.3" fill="#fff" />
+      <circle cx="12" cy="12" r="3.4" fill="#4285f4" />
+    </svg>
+  ),
+  spotify: () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect width="24" height="24" fill="#0a0a0a" />
+      <circle cx="12" cy="12" r="8" fill="#1ed760" />
+      <g fill="none" stroke="#0a0a0a" strokeLinecap="round">
+        <path d="M7.4 9.7c3-1 6.6-.7 9.3.8" strokeWidth="1.6" />
+        <path d="M7.9 12.3c2.5-.7 5.4-.4 7.6.8" strokeWidth="1.35" />
+        <path d="M8.4 14.8c2-.5 4.1-.3 5.9.6" strokeWidth="1.15" />
+      </g>
+    </svg>
+  ),
+  vscode: () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="ai-code-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3a3a3e" /><stop offset="1" stopColor="#1c1c1e" /></linearGradient>
+        <linearGradient id="ai-code-fg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#3fb6ff" /><stop offset="1" stopColor="#0065a9" /></linearGradient>
+      </defs>
+      <rect width="24" height="24" fill="url(#ai-code-bg)" />
+      <g transform="translate(5 5) scale(0.5833)">
+        <path fill="url(#ai-code-fg)" d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z" />
+      </g>
+    </svg>
+  ),
+  notes: () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="ai-notes-top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ffe066" /><stop offset="1" stopColor="#ffc700" /></linearGradient>
+      </defs>
+      <rect width="24" height="24" fill="#fbfbf8" />
+      <rect width="24" height="7.2" fill="url(#ai-notes-top)" />
+      <path d="M2 7.9h20" stroke="#c9c6bd" strokeWidth="0.5" strokeDasharray="0.6 0.9" />
+      <path d="M0 11.6h24M0 15.2h24M0 18.8h24" stroke="#d9d6cf" strokeWidth="0.6" />
+    </svg>
+  ),
+  calculator: () => (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <defs>
+        <linearGradient id="ai-calc-bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#2c2c2e" /><stop offset="1" stopColor="#0d0d0f" /></linearGradient>
+      </defs>
+      <rect width="24" height="24" fill="url(#ai-calc-bg)" />
+      {[0, 1, 2, 3].map(row => [0, 1, 2, 3].map(col => (
+        <circle
+          key={`${row}-${col}`}
+          cx={5.4 + col * 4.4}
+          cy={5.4 + row * 4.4}
+          r={1.75}
+          fill={col === 3 ? '#ff9f0a' : row === 0 ? '#a5a5aa' : '#4d4d52'}
+        />
+      )))}
+    </svg>
+  ),
 };
 
 export default App;
