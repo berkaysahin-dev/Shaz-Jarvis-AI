@@ -447,7 +447,7 @@ function createWindow() {
     const dTotal = prev ? total - prev.total : 0;
     const cpuUsage = dTotal > 0
       ? Math.max(0, Math.min(100, Math.round(((busy - prev.busy) / dTotal) * 100)))
-      : Math.min(100, Math.round((busy / (total || 1)) * 100));
+      : 0;
 
     return {
       cpuUsage,

@@ -364,7 +364,7 @@ html.is-electron .left-sidebar {
 }
 
 .gauge-arc {
-  transition: stroke-dashoffset 450ms var(--ease-out), stroke 400ms ease;
+  transition: stroke 600ms ease;
 }
 
 .gauge-value {
