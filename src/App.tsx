@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type ReactNode, type CSSProperties } from 'react';
-import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
+import { motion, AnimatePresence, MotionConfig, useSpring, useTransform } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { Canvas } from '@react-three/fiber';
 import { Orb } from './components/Orb';
@@ -19,12 +19,20 @@ function Gauge({ value, label, detail }: { value: number; label: string; detail:
   const c = 2 * Math.PI * r;
   const pct = Math.max(0, Math.min(100, value));
   const color = levelColor(pct);
+
+  // One spring drives both the arc and the number, so they always agree
+  // and glide between samples instead of jumping.
+  const spring = useSpring(pct, { bounce: 0, duration: 1.2 });
+  useEffect(() => { spring.set(pct); }, [pct, spring]);
+  const dashOffset = useTransform(spring, v => c * (1 - v / 100));
+  const shown = useTransform(spring, v => Math.round(v));
+
   return (
     <div className="gauge">
       <div className="gauge-ring" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
           <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeOpacity={0.18} strokeWidth={stroke} />
-          <circle
+          <motion.circle
             className="gauge-arc"
             cx={size / 2}
             cy={size / 2}
@@ -34,11 +42,11 @@ function Gauge({ value, label, detail }: { value: number; label: string; detail:
             strokeWidth={stroke}
             strokeLinecap="round"
             strokeDasharray={c}
-            strokeDashoffset={c * (1 - pct / 100)}
+            style={{ strokeDashoffset: dashOffset }}
             transform={`rotate(-90 ${size / 2} ${size / 2})`}
           />
         </svg>
-        <span className="gauge-value">{Math.round(pct)}<small>%</small></span>
+        <span className="gauge-value"><motion.span>{shown}</motion.span><small>%</small></span>
       </div>
       <span className="gauge-label">{label}</span>
       <span className="gauge-detail">{detail}</span>
@@ -142,7 +150,11 @@ export function App() {
           try {
             const stats = await ipcRenderer.invoke('get-system-stats');
             if (stats) {
-              setSystemStats(stats);
+              // Smooth CPU load (exponential moving average) so the gauge reads calmly
+              setSystemStats(prev => ({
+                ...stats,
+                cpuUsage: prev.cores && prev.cpuUsage > 0 ? Math.round(prev.cpuUsage * 0.65 + stats.cpuUsage * 0.35) : stats.cpuUsage,
+              }));
             }
           } catch(e) {}
         };
