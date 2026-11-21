@@ -1,1211 +1,700 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { GEMINI_CONFIG } from '../config/geminiConfig';
+import { MicRecorder, playAudio, playJarvisSound, base64ToBytes, type Playback, type RecordingEnd } from '../lib/audio';
+import { generate, synthesizeSpeech, testConnection, GeminiError, type Content, type Part, type GeminiErrorKind } from '../lib/gemini';
 
+export { playJarvisSound };
 export type JarvisStatus = 'idle' | 'listening' | 'processing' | 'speaking' | 'error';
 export type JarvisLanguage = 'tr-TR' | 'en-US';
-export type JarvisSoundType = 'wake' | 'start' | 'stop' | 'success' | 'process' | 'error';
+export type VoiceEngine = 'gemini' | 'edge';
+export type JarvisErrorKind = GeminiErrorKind | 'mic' | 'key';
 
 export interface Message {
-  role: 'user' | 'model';
+  role: 'user' | 'model' | 'system';
   content: string;
 }
 
-// Studio-Quality Hardware Synthesizer using Web Audio API (Zero External Files Needed)
-export const playJarvisSound = (type: JarvisSoundType) => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-    const now = ctx.currentTime;
+// Gemini HD voices (studio quality, many languages including Turkish)
+export const GEMINI_VOICES = [
+  { id: 'Charon', tr: 'Charon — derin, bilgilendirici', en: 'Charon — deep, informative' },
+  { id: 'Orus', tr: 'Orus — kararlı, net', en: 'Orus — firm, clear' },
+  { id: 'Fenrir', tr: 'Fenrir — enerjik', en: 'Fenrir — energetic' },
+  { id: 'Iapetus', tr: 'Iapetus — sakin, berrak', en: 'Iapetus — calm, clear' },
+  { id: 'Kore', tr: 'Kore — kadın, net', en: 'Kore — female, firm' },
+  { id: 'Aoede', tr: 'Aoede — kadın, akıcı', en: 'Aoede — female, breezy' },
+];
 
-    if (type === 'wake') {
-      // Iron Man / JARVIS High-Tech 3-tone Crystalline Wake Chime (D5 -> A5 -> D6)
-      const notes = [587.33, 880.00, 1174.66];
-      notes.forEach((freq, index) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const filter = ctx.createBiquadFilter();
+// Microsoft neural voices (fast, free, used as fallback)
+export const EDGE_VOICES = [
+  { id: 'tr-TR-AhmetNeural', tr: 'Ahmet — Türkçe erkek', en: 'Ahmet — Turkish male' },
+  { id: 'tr-TR-EmelNeural', tr: 'Emel — Türkçe kadın', en: 'Emel — Turkish female' },
+  { id: 'en-US-AndrewMultilingualNeural', tr: 'Andrew — çok dilli', en: 'Andrew — multilingual' },
+  { id: 'en-GB-RyanNeural', tr: 'Ryan — İngiliz aksanı', en: 'Ryan — British' },
+];
 
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + index * 0.045);
-
-        filter.type = 'bandpass';
-        filter.frequency.setValueAtTime(freq * 1.15, now);
-        filter.Q.setValueAtTime(2.5, now);
-
-        const startTime = now + index * 0.045;
-        gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(0.12, startTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.28);
-
-        osc.connect(filter);
-        filter.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start(startTime);
-        osc.stop(startTime + 0.3);
-      });
-    } else if (type === 'start') {
-      // Crisp Dual-Harmonic Activation Chime (E5 -> B5)
-      const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc1.type = 'sine';
-      osc2.type = 'triangle';
-
-      osc1.frequency.setValueAtTime(659.25, now);
-      osc1.frequency.exponentialRampToValueAtTime(1318.51, now + 0.12);
-
-      osc2.frequency.setValueAtTime(987.77, now);
-      osc2.frequency.exponentialRampToValueAtTime(1975.53, now + 0.12);
-
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.09, now + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 0.18);
-      osc2.stop(now + 0.18);
-    } else if (type === 'stop') {
-      // Soft Gentle Sci-Fi Deactivation / Interrupt (A5 -> D5)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880.00, now);
-      osc.frequency.exponentialRampToValueAtTime(440.00, now + 0.14);
-
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(now);
-      osc.stop(now + 0.16);
-    } else if (type === 'success') {
-      // Bright Positive Sci-Fi Confirmation Chord (G5 + E6)
-      [783.99, 1318.51].forEach((freq, idx) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.05);
-
-        const st = now + idx * 0.05;
-        gain.gain.setValueAtTime(0, st);
-        gain.gain.linearRampToValueAtTime(0.1, st + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, st + 0.22);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(st);
-        osc.stop(st + 0.25);
-      });
-    } else if (type === 'error') {
-      // Subtle Sci-Fi Warning Tone
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(220, now);
-      osc.frequency.linearRampToValueAtTime(130, now + 0.18);
-
-      gain.gain.setValueAtTime(0.06, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.22);
-    }
-  } catch (e) {
-    console.warn('[JARVIS Sound FX Error]:', e);
-  }
+const isElectron = typeof window !== 'undefined' && !!(window as any).require;
+const ipc = (): any | null => {
+  if (!isElectron) return null;
+  try { return (window as any).require('electron').ipcRenderer; } catch { return null; }
 };
 
+function readPref<T extends string | number | boolean>(key: string, fallback: T): T {
+  const v = localStorage.getItem(key);
+  if (v === null) return fallback;
+  if (typeof fallback === 'number') return (parseFloat(v) || fallback) as T;
+  if (typeof fallback === 'boolean') return (v === 'true') as T;
+  return v as T;
+}
+
+/* --------------------------------------------------------------------------
+   Tools Gemini can call to act on the computer
+   -------------------------------------------------------------------------- */
+
+const TOOLS = [{
+  functionDeclarations: [
+    {
+      name: 'open_app',
+      description: 'Bilgisayarda bir uygulamayı veya klasörü açar.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          app: {
+            type: 'STRING',
+            enum: ['chrome', 'youtube', 'spotify', 'vscode', 'notepad', 'calculator', 'explorer', 'downloads', 'desktop', 'documents', 'settings', 'task_manager', 'paint', 'terminal', 'camera_app', 'mail', 'calendar'],
+          },
+        },
+        required: ['app'],
+      },
+    },
+    {
+      name: 'web_search',
+      description: 'Tarayıcıda arama yapar veya YouTube’da video/şarkı açar, haritada yer arar.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          query: { type: 'STRING' },
+          site: { type: 'STRING', enum: ['google', 'youtube', 'maps', 'wikipedia', 'translate'] },
+        },
+        required: ['query'],
+      },
+    },
+    {
+      name: 'control_media',
+      description: 'Müzik/medya ve sistem sesini kontrol eder.',
+      parameters: {
+        type: 'OBJECT',
+        properties: { action: { type: 'STRING', enum: ['playpause', 'next', 'previous', 'volume_up', 'volume_down', 'mute'] } },
+        required: ['action'],
+      },
+    },
+    {
+      name: 'set_reminder',
+      description: 'Belirli bir süre sonra bildirimle hatırlatma yapar.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          message: { type: 'STRING' },
+          delay_seconds: { type: 'NUMBER' },
+        },
+        required: ['message', 'delay_seconds'],
+      },
+    },
+    {
+      name: 'save_note',
+      description: 'Kullanıcının notlarına yeni bir not ekler.',
+      parameters: { type: 'OBJECT', properties: { text: { type: 'STRING' } }, required: ['text'] },
+    },
+    {
+      name: 'get_notes',
+      description: 'Kayıtlı notları okur.',
+      parameters: { type: 'OBJECT', properties: {} },
+    },
+    {
+      name: 'search_file',
+      description: 'İndirilenler, Masaüstü veya Belgeler’de adıyla dosya bulup açar.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          file_name: { type: 'STRING' },
+          folder: { type: 'STRING', enum: ['downloads', 'desktop', 'documents', 'any'] },
+        },
+        required: ['file_name'],
+      },
+    },
+    {
+      name: 'remember',
+      description: 'Kullanıcı hakkında kalıcı bir bilgiyi hatırlar (ör. adı, sevdiği şeyler).',
+      parameters: {
+        type: 'OBJECT',
+        properties: { key: { type: 'STRING' }, value: { type: 'STRING' } },
+        required: ['key', 'value'],
+      },
+    },
+    {
+      name: 'get_system_status',
+      description: 'İşlemci, bellek ve pil durumunu verir.',
+      parameters: { type: 'OBJECT', properties: {} },
+    },
+    {
+      name: 'lock_screen',
+      description: 'Bilgisayarı kilitler.',
+      parameters: { type: 'OBJECT', properties: {} },
+    },
+  ],
+}];
+
+// Tools whose result must be read and summarised by the model before replying
+const INFO_TOOLS = new Set(['get_notes', 'get_system_status']);
+
+async function runTool(name: string, args: any): Promise<string> {
+  const r = ipc();
+  if (!r) return 'Bu işlem yalnızca masaüstü uygulamasında yapılabilir.';
+  const map: Record<string, [string, any]> = {
+    open_app: ['open_app', { appName: args.app }],
+    web_search: ['web_search', { query: args.query, site: args.site || 'google' }],
+    control_media: ['control_media', { action: args.action }],
+    set_reminder: ['set_reminder', { title: args.message, delaySeconds: Math.max(1, Math.round(args.delay_seconds || 60)) }],
+    save_note: ['save_note', { text: args.text }],
+    get_notes: ['get_notes', {}],
+    search_file: ['search_file', { fileName: args.file_name, targetFolder: args.folder === 'any' ? '' : args.folder }],
+    remember: ['save_memory', { key: args.key, value: args.value }],
+    get_system_status: ['get_system_status', {}],
+    lock_screen: ['lock_screen', {}],
+  };
+  const target = map[name];
+  if (!target) return 'Bilinmeyen işlem.';
+  try {
+    const res = await r.invoke('execute-tool', { name: target[0], args: target[1] });
+    return typeof res === 'string' ? res : JSON.stringify(res);
+  } catch (e: any) {
+    return `İşlem başarısız: ${e?.message || e}`;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Speech helpers
+   -------------------------------------------------------------------------- */
+
+const WAKE = /^(hey |hi |ey |merhaba |selam )?(jarvis|carvis|cervis|çervis|jarviz|jervis|charvis)\b[\s,.!?]*/i;
+
+function stripWakeWord(text: string): { woke: boolean; rest: string } {
+  const t = text.trim();
+  const m = t.match(WAKE);
+  if (!m) return { woke: false, rest: t };
+  return { woke: true, rest: t.slice(m[0].length).trim() };
+}
+
+const STOP_PHRASES = new Set([
+  'dur', 'durdur', 'sus', 'yeter', 'iptal', 'kes', 'sessiz ol', 'tamam dur', 'tamam sus', 'tamam yeter', 'vazgeç',
+  'stop', 'cancel', 'be quiet', 'quiet', 'shut up', 'never mind', 'nevermind',
+]);
+
+// Only a whole utterance that is a stop phrase stops JARVIS. "Müziği durdur" must reach Gemini.
+function isStopCommand(text: string): boolean {
+  const clean = text.toLocaleLowerCase('tr-TR').replace(/[.,!?;:'"]/g, '').replace(/\s+/g, ' ').trim();
+  const { rest } = stripWakeWord(clean);
+  return STOP_PHRASES.has(clean) || STOP_PHRASES.has(rest);
+}
+
+function speakable(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/[*#_`~>[\]()]/g, '')
+    .replace(/\bhttps?:\/\/\S+/gi, '')
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* --------------------------------------------------------------------------
+   Hook
+   -------------------------------------------------------------------------- */
+
 export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
+  const tr = language === 'tr-TR';
   const [status, setStatus] = useState<JarvisStatus>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
   const [conversation, setConversation] = useState<Message[]>([]);
   const [currentResponse, setCurrentResponse] = useState('');
-  // Live (interim) speech transcript, shown as a caption while listening
   const [liveTranscript, setLiveTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [errorKind, setErrorKind] = useState<JarvisErrorKind | null>(null);
+  const [notice, setNotice] = useState('');
   const [isMuted, setIsMuted] = useState(false);
 
-  // Voice Customization (Pitch & Rate)
-  const [voicePitch, setVoicePitchState] = useState<number>(() => {
-    const saved = localStorage.getItem('jarvis_voice_pitch');
-    return saved ? parseFloat(saved) : 0.95;
-  });
+  const [voicePitch, setVoicePitchState] = useState<number>(() => readPref<number>('jarvis_voice_pitch', 1.0));
+  const [voiceRate, setVoiceRateState] = useState<number>(() => readPref<number>('jarvis_voice_rate', 1.0));
+  const [voiceEngine, setVoiceEngineState] = useState<VoiceEngine>(() => readPref<string>('jarvis_voice_engine', 'gemini') as VoiceEngine);
+  const [geminiVoice, setGeminiVoiceState] = useState<string>(() => readPref<string>('jarvis_gemini_voice', 'Charon'));
+  const [edgeVoice, setEdgeVoiceState] = useState<string>(() => readPref<string>('jarvis_edge_voice', 'tr-TR-AhmetNeural'));
+  const [isAlwaysListening, setIsAlwaysListening] = useState<boolean>(() => readPref<boolean>('jarvis_always_listening', false));
 
-  const [voiceRate, setVoiceRateState] = useState<number>(() => {
-    const saved = localStorage.getItem('jarvis_voice_rate');
-    return saved ? parseFloat(saved) : 1.0;
-  });
+  const persist = <T,>(key: string, setter: (v: T) => void) => (v: T) => { setter(v); localStorage.setItem(key, String(v)); };
+  const setVoicePitch = persist<number>('jarvis_voice_pitch', setVoicePitchState);
+  const setVoiceRate = persist<number>('jarvis_voice_rate', setVoiceRateState);
+  const setVoiceEngine = persist<VoiceEngine>('jarvis_voice_engine', setVoiceEngineState);
+  const setGeminiVoice = persist<string>('jarvis_gemini_voice', setGeminiVoiceState);
+  const setEdgeVoice = persist<string>('jarvis_edge_voice', setEdgeVoiceState);
 
-  const setVoicePitch = (val: number) => {
-    setVoicePitchState(val);
-    localStorage.setItem('jarvis_voice_pitch', val.toString());
-  };
+  // Refs keep async callbacks reading current values instead of stale closures
+  const live = useRef({ apiKey, language, isMuted, isAlwaysListening, voicePitch, voiceRate, voiceEngine, geminiVoice, edgeVoice });
+  live.current = { apiKey, language, isMuted, isAlwaysListening, voicePitch, voiceRate, voiceEngine, geminiVoice, edgeVoice };
 
-  const setVoiceRate = (val: number) => {
-    setVoiceRateState(val);
-    localStorage.setItem('jarvis_voice_rate', val.toString());
-  };
-
-  // Always-On Wake Word Background Listening Mode
-  const [isAlwaysListening, setIsAlwaysListeningState] = useState<boolean>(() => {
-    const saved = localStorage.getItem('jarvis_always_listening');
-    return saved === 'true';
-  });
-  const isAlwaysListeningRef = useRef(isAlwaysListening);
-  isAlwaysListeningRef.current = isAlwaysListening;
-
-  const toggleAlwaysListening = useCallback(() => {
-    setIsAlwaysListeningState(prev => {
-      const next = !prev;
-      localStorage.setItem('jarvis_always_listening', next ? 'true' : 'false');
-      isAlwaysListeningRef.current = next;
-      return next;
-    });
-  }, []);
-
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<BlobPart[]>([]);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const maxTimeoutRef = useRef<any>(null);
-  const recognitionRef = useRef<any>(null);
-  const bargeInRecognitionRef = useRef<any>(null);
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const silenceTimerRef = useRef<any>(null);
-  const latestTranscriptRef = useRef<string>('');
-
-  // Cancellation & Session Tracking Refs for Instant Interrupt ('durdur')
-  const sessionIdRef = useRef<number>(0);
-  const activeAbortControllerRef = useRef<AbortController | null>(null);
-  const isAbortedRef = useRef<boolean>(false);
   const statusRef = useRef<JarvisStatus>('idle');
+  const sessionRef = useRef(0);
+  const recorderRef = useRef<MicRecorder | null>(null);
+  const playbackRef = useRef<Playback | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const historyRef = useRef<Content[]>([]);
+  const geminiTtsPausedUntil = useRef(0);
+  const noticeTimer = useRef<any>(null);
+  const startListeningRef = useRef<() => void>(() => {});
 
-  const updateStatus = useCallback((nextStatus: JarvisStatus) => {
-    statusRef.current = nextStatus;
-    setStatus(nextStatus);
-    if (nextStatus !== 'listening') setLiveTranscript('');
+  const updateStatus = useCallback((s: JarvisStatus) => {
+    statusRef.current = s;
+    setStatus(s);
+    if (s !== 'listening') setLiveTranscript('');
   }, []);
 
-  // Auto Voice Silence Detection Refs
-  const hasSpokenRef = useRef(false);
-  const lastSoundTimeRef = useRef<number>(0);
-  const isStoppingRef = useRef(false);
+  const flashNotice = useCallback((text: string) => {
+    setNotice(text);
+    clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(''), 3500);
+  }, []);
 
-  const toggleMute = () => {
+  const showError = useCallback((kind: JarvisErrorKind, message: string) => {
+    setErrorKind(kind);
+    setErrorMessage(message);
+    updateStatus('error');
+    playJarvisSound('error');
+  }, [updateStatus]);
+
+  const clearError = useCallback(() => { setErrorMessage(''); setErrorKind(null); }, []);
+
+  const focusAppWindow = useCallback(() => { ipc()?.send('show-and-focus-window'); }, []);
+
+  /** Cancels whatever JARVIS is doing and starts a new session id. */
+  const haltAll = useCallback(() => {
+    sessionRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    recorderRef.current?.cancel();
+    recorderRef.current = null;
+    playbackRef.current?.stop();
+    playbackRef.current = null;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    setAudioLevel(0);
+    return sessionRef.current;
+  }, []);
+
+  const stopVoiceChat = useCallback(() => {
+    haltAll();
+    updateStatus('idle');
+    playJarvisSound('stop');
+  }, [haltAll, updateStatus]);
+
+  /* ---------------- speaking ---------------- */
+
+  const afterSpeaking = useCallback((session: number) => {
+    if (session !== sessionRef.current) return;
+    setAudioLevel(0);
+    updateStatus('idle');
+    if (live.current.isAlwaysListening && !live.current.isMuted) {
+      setTimeout(() => {
+        if (session === sessionRef.current && statusRef.current === 'idle') startListeningRef.current();
+      }, 350);
+    }
+  }, [updateStatus]);
+
+  const speakWithBrowser = useCallback((text: string, session: number) => new Promise<void>((resolve) => {
+    if (!('speechSynthesis' in window)) return resolve();
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = live.current.language;
+    u.pitch = live.current.voicePitch;
+    u.rate = live.current.voiceRate;
+    const voices = window.speechSynthesis.getVoices();
+    const lang = live.current.language.slice(0, 2);
+    u.voice = voices.find(v => v.lang.startsWith(lang) && /natural|neural|online/i.test(v.name)) || voices.find(v => v.lang.startsWith(lang)) || null;
+    u.onstart = () => { if (session === sessionRef.current) updateStatus('speaking'); };
+    u.onend = () => resolve();
+    u.onerror = () => resolve();
+    window.speechSynthesis.speak(u);
+  }), [updateStatus]);
+
+  const speakText = useCallback(async (text: string, session = sessionRef.current, force?: { engine: VoiceEngine; voice: string }) => {
+    const clean = speakable(text);
+    if (!clean || session !== sessionRef.current) { afterSpeaking(session); return; }
+    const p = live.current;
+    const engine = force?.engine ?? p.voiceEngine;
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const play = async (bytes: Uint8Array, mime: string) => {
+      if (session !== sessionRef.current) return;
+      const pb = await playAudio(bytes, mime, setAudioLevel);
+      playbackRef.current = pb;
+      updateStatus('speaking');
+      await pb.done;
+    };
+
+    try {
+      // 1. Gemini HD voice
+      if (engine === 'gemini' && p.apiKey && Date.now() > geminiTtsPausedUntil.current) {
+        try {
+          const rateHint = p.voiceRate > 1.15 ? (tr ? ' Biraz hızlı konuş.' : ' Speak a little fast.') : p.voiceRate < 0.85 ? (tr ? ' Yavaş ve tane tane konuş.' : ' Speak slowly.') : '';
+          const style = tr
+            ? `Aşağıdaki metni sakin, kendinden emin, sıcak ve profesyonel bir yapay zekâ asistanı gibi, doğal Türkçe vurgu ve tonlamayla seslendir.${rateHint} Sadece metni oku:`
+            : `Read the following like a calm, confident, warm and refined AI butler, with natural intonation.${rateHint} Read only the text:`;
+          const voice = force?.engine === 'gemini' ? force.voice : p.geminiVoice;
+          const audio = await synthesizeSpeech(p.apiKey, clean, voice, style, controller.signal);
+          await play(base64ToBytes(audio.data), audio.mimeType);
+          afterSpeaking(session);
+          return;
+        } catch (e) {
+          if (e instanceof GeminiError && e.kind === 'aborted') return;
+          if (session !== sessionRef.current) return;
+          console.warn('[JARVIS] Gemini voice unavailable, using neural fallback', e);
+          // Don't wait on a failing HD voice for every reply (free-tier quota is small)
+          geminiTtsPausedUntil.current = Date.now() + 10 * 60 * 1000;
+        }
+      }
+
+      // 2. Microsoft neural voice via the Electron main process
+      const r = ipc();
+      if (r) {
+        try {
+          const voice = force?.engine === 'edge' ? force.voice : p.edgeVoice;
+          const b64: string | null = await r.invoke('synthesize-speech', {
+            text: clean,
+            voice,
+            rate: p.voiceRate,
+            pitch: p.voicePitch,
+          });
+          if (session !== sessionRef.current) return;
+          if (b64) {
+            await play(base64ToBytes(b64), 'audio/mpeg');
+            afterSpeaking(session);
+            return;
+          }
+        } catch (e) {
+          console.warn('[JARVIS] neural voice failed', e);
+        }
+      }
+
+      // 3. Built-in system voice
+      if (session !== sessionRef.current) return;
+      await speakWithBrowser(clean, session);
+      afterSpeaking(session);
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+      playbackRef.current = null;
+    }
+  }, [afterSpeaking, speakWithBrowser, tr, updateStatus]);
+
+  /* ---------------- thinking ---------------- */
+
+  const systemPrompt = async (): Promise<string> => {
+    const now = new Date();
+    const when = now.toLocaleString(live.current.language, { dateStyle: 'full', timeStyle: 'short' });
+    let memory = '';
+    try {
+      const raw = await ipc()?.invoke('execute-tool', { name: 'get_memory', args: {} });
+      if (raw && raw.trim().startsWith('{')) {
+        const obj = JSON.parse(raw);
+        memory = Object.entries(obj).map(([k, v]: any) => `${k}: ${v?.value ?? v}`).join('; ');
+      }
+    } catch { /* no memory yet */ }
+    return live.current.language === 'tr-TR'
+      ? [
+          'Sen JARVIS’sin: Windows bilgisayarda çalışan zeki, nazik, hafif esprili ve son derece yetkin bir kişisel asistan.',
+          'Yanıtların sesli okunacak: kısa (çoğunlukla 1-2 cümle), doğal ve akıcı Türkçe konuş. Markdown, liste, emoji veya bağlantı kullanma.',
+          'Kullanıcıya zaman zaman "efendim" diye hitap edebilirsin. Bilmediğin güncel bilgiler için uydurma; gerekirse web_search ile tarayıcıda aç.',
+          'Bilgisayarda bir işlem istenirse (uygulama açma, arama, müzik, hatırlatma, not, dosya, kilit) ilgili aracı çağır ve sonucu tek cümleyle bildir.',
+          'Kullanıcı kendisiyle ilgili kalıcı bir bilgi paylaşırsa remember aracıyla kaydet.',
+          `Şu an: ${when}.`,
+          memory ? `Kullanıcı hakkında bildiklerin: ${memory}.` : '',
+        ].filter(Boolean).join('\n')
+      : [
+          'You are JARVIS: a witty, polite and highly capable personal assistant running on a Windows PC.',
+          'Your replies are spoken aloud: keep them short (usually 1-2 sentences) and natural. No markdown, lists, emoji or links.',
+          'You may address the user as "sir". Do not invent current facts; use web_search to open the browser when needed.',
+          'When asked to do something on the computer, call the matching tool and confirm in one sentence.',
+          'When the user shares a lasting personal fact, save it with remember.',
+          `Now: ${when}.`,
+          memory ? `What you know about the user: ${memory}.` : '',
+        ].filter(Boolean).join('\n');
+  };
+
+  const pushHistory = (c: Content) => {
+    historyRef.current = [...historyRef.current, c].slice(-GEMINI_CONFIG.HISTORY_TURNS);
+  };
+
+  const handleFailure = useCallback((e: any, session: number) => {
+    if (session !== sessionRef.current) return;
+    if (e instanceof GeminiError) {
+      if (e.kind === 'aborted') return;
+      showError(e.kind, e.message);
+    } else {
+      console.error('[JARVIS]', e);
+      showError('server', e?.message || (tr ? 'Beklenmeyen bir hata oluştu.' : 'Something went wrong.'));
+    }
+  }, [showError, tr]);
+
+  /** Sends one user turn (text and/or media) and speaks the answer. */
+  const runTurn = useCallback(async (parts: Part[], display: string, session: number) => {
+    const key = live.current.apiKey;
+    if (!key.trim()) {
+      showError('key', tr ? 'Önce Ayarlar’dan Gemini API anahtarınızı girin.' : 'Add your Gemini API key in Settings first.');
+      return;
+    }
+    clearError();
+    setConversation(prev => [...prev, { role: 'user', content: display }]);
+    updateStatus('processing');
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const system = await systemPrompt();
+      const userContent: Content = { role: 'user', parts };
+      const contents = [...historyRef.current, userContent];
+      const result = await generate({ apiKey: key, contents, system, tools: TOOLS, signal: controller.signal });
+      if (session !== sessionRef.current) return;
+
+      let reply = result.text;
+      if (result.functionCalls.length) {
+        const outputs: { name: string; result: string }[] = [];
+        for (const call of result.functionCalls) {
+          const out = await runTool(call.name, call.args);
+          outputs.push({ name: call.name, result: out });
+          setConversation(prev => [...prev, { role: 'system', content: out }]);
+        }
+        if (session !== sessionRef.current) return;
+        playJarvisSound('success');
+
+        if (!reply || outputs.some(o => INFO_TOOLS.has(o.name))) {
+          // Let the model phrase the result naturally (needed for notes / status)
+          const follow = await generate({
+            apiKey: key,
+            system,
+            signal: controller.signal,
+            contents: [
+              ...contents,
+              { role: 'model', parts: result.functionCalls.map(fc => ({ functionCall: fc })) },
+              { role: 'user', parts: outputs.map(o => ({ functionResponse: { name: o.name, response: { result: o.result } } })) },
+            ],
+          }).catch(() => null);
+          if (session !== sessionRef.current) return;
+          reply = follow?.text || reply || outputs.map(o => o.result).join(' ');
+        }
+      }
+
+      // Keep text-only history: small, and valid for every model
+      const textParts = parts.filter(p => p.text);
+      pushHistory({ role: 'user', parts: textParts.length ? textParts : [{ text: display }] });
+      pushHistory({ role: 'model', parts: [{ text: reply }] });
+
+      setConversation(prev => [...prev, { role: 'model', content: reply }]);
+      setCurrentResponse(reply);
+      if (abortRef.current === controller) abortRef.current = null;
+      await speakText(reply, session);
+    } catch (e) {
+      handleFailure(e, session);
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+  }, [clearError, handleFailure, showError, speakText, tr, updateStatus]);
+
+  /* ---------------- listening ---------------- */
+
+  const transcribe = async (wavBase64: string, signal: AbortSignal): Promise<string> => {
+    const res = await generate({
+      apiKey: live.current.apiKey,
+      fast: true,
+      signal,
+      temperature: 0,
+      maxOutputTokens: 400,
+      deadlineMs: 15000,
+      system: 'You are a speech-to-text engine. Transcribe the audio exactly as spoken, in the language spoken (usually Turkish, sometimes English). Output only the transcript text with normal punctuation. If there is no intelligible speech, output nothing.',
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: 'Transcribe this recording.' },
+          { inline_data: { mime_type: 'audio/wav', data: wavBase64 } },
+        ],
+      }],
+    });
+    return res.text.replace(/^["“]|["”]$/g, '').trim();
+  };
+
+  const startListening = useCallback(async () => {
+    const p = live.current;
+    if (!p.apiKey.trim()) {
+      showError('key', tr ? 'Önce Ayarlar’dan Gemini API anahtarınızı girin.' : 'Add your Gemini API key in Settings first.');
+      return;
+    }
+    if (p.isMuted) {
+      flashNotice(tr ? 'Mikrofon kapalı' : 'Microphone is muted');
+      return;
+    }
+
+    const session = haltAll();
+    clearError();
+    setLiveTranscript('');
+    updateStatus('listening');
+    playJarvisSound('start');
+
+    const recorder = new MicRecorder();
+    recorderRef.current = recorder;
+    let result: RecordingEnd;
+    try {
+      result = await recorder.record({
+        onLevel: (l) => { if (session === sessionRef.current) setAudioLevel(l); },
+        endSilenceMs: 1300,
+        noSpeechTimeoutMs: p.isAlwaysListening ? 30000 : 8000,
+        maxDurationMs: 25000,
+      });
+    } catch (e: any) {
+      if (session !== sessionRef.current) return;
+      const denied = e?.name === 'NotAllowedError' || e?.name === 'SecurityError';
+      const missing = e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError';
+      showError('mic', denied
+        ? (tr ? 'Mikrofon izni verilmedi. Windows Ayarlar › Gizlilik › Mikrofon’dan izin verin.' : 'Microphone access was denied.')
+        : missing
+          ? (tr ? 'Mikrofon bulunamadı. Bir mikrofon bağlı olduğundan emin olun.' : 'No microphone found.')
+          : (tr ? `Mikrofon açılamadı: ${e?.message || e}` : `Could not open the microphone: ${e?.message || e}`));
+      return;
+    } finally {
+      if (recorderRef.current === recorder) recorderRef.current = null;
+    }
+
+    if (session !== sessionRef.current || result.reason === 'cancelled') return;
+    setAudioLevel(0);
+
+    if (result.reason !== 'speech') {
+      if (live.current.isAlwaysListening && !live.current.isMuted) {
+        startListeningRef.current();
+      } else {
+        updateStatus('idle');
+        flashNotice(tr ? 'Ses algılanmadı' : 'Didn’t catch that');
+      }
+      return;
+    }
+
+    playJarvisSound('process');
+    updateStatus('processing');
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let text = '';
+    try {
+      text = await transcribe(result.wavBase64, controller.signal);
+    } catch (e) {
+      handleFailure(e, session);
+      return;
+    } finally {
+      if (abortRef.current === controller) abortRef.current = null;
+    }
+    if (session !== sessionRef.current) return;
+
+    if (!text) {
+      if (live.current.isAlwaysListening) { startListeningRef.current(); return; }
+      updateStatus('idle');
+      flashNotice(tr ? 'Anlaşılır bir konuşma algılanmadı' : 'No clear speech detected');
+      return;
+    }
+
+    if (isStopCommand(text)) { stopVoiceChat(); return; }
+
+    const { woke, rest } = stripWakeWord(text);
+    if (live.current.isAlwaysListening) {
+      // In hands-free mode only requests addressed to JARVIS are answered
+      if (!woke) { startListeningRef.current(); return; }
+      focusAppWindow();
+      playJarvisSound('wake');
+    }
+    if (woke && !rest) {
+      const reply = tr ? 'Dinliyorum efendim.' : 'Yes sir, I’m listening.';
+      setConversation(prev => [...prev, { role: 'user', content: text }, { role: 'model', content: reply }]);
+      await speakText(reply, session);
+      return;
+    }
+    const request = woke ? rest : text;
+    await runTurn([{ text: request }], text, session);
+  }, [clearError, flashNotice, focusAppWindow, haltAll, handleFailure, runTurn, showError, speakText, stopVoiceChat, tr, updateStatus]);
+
+  startListeningRef.current = startListening;
+
+  /** User tapped while listening: finish now and send what was said. */
+  const stopListening = useCallback(() => {
+    if (recorderRef.current) recorderRef.current.stopAndSend();
+    else if (statusRef.current === 'listening') updateStatus('idle');
+  }, [updateStatus]);
+
+  /* ---------------- public actions ---------------- */
+
+  const sendTextMessage = useCallback(async (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    if (isStopCommand(t)) { stopVoiceChat(); return; }
+    const session = haltAll();
+    await runTurn([{ text: t }], t, session);
+  }, [haltAll, runTurn, stopVoiceChat]);
+
+  const sendImageToGemini = useCallback(async (base64Image: string, promptText: string) => {
+    const session = haltAll();
+    await runTurn(
+      [{ text: promptText || (tr ? 'Bu görüntüde ne var? Kısaca açıkla.' : 'What is in this image? Briefly explain.') }, { inline_data: { mime_type: 'image/jpeg', data: base64Image } }],
+      tr ? '📷 [Görüntü analizi]' : '📷 [Image analysis]',
+      session,
+    );
+  }, [haltAll, runTurn, tr]);
+
+  const previewVoice = useCallback(async (engine: VoiceEngine, voice: string) => {
+    const session = haltAll();
+    updateStatus('processing');
+    const sample = tr ? 'Merhaba efendim, ben JARVIS. Sizin için ne yapabilirim?' : 'Good evening, sir. I am JARVIS. How may I help?';
+    if (engine === 'gemini') geminiTtsPausedUntil.current = 0;
+    await speakText(sample, session, { engine, voice });
+  }, [haltAll, speakText, tr, updateStatus]);
+
+  const checkConnection = useCallback(async (key: string): Promise<{ ok: boolean; message: string }> => {
+    try {
+      const model = await testConnection(key);
+      geminiTtsPausedUntil.current = 0;
+      return { ok: true, message: tr ? `Bağlantı başarılı · ${model}` : `Connected · ${model}` };
+    } catch (e: any) {
+      return { ok: false, message: e?.message || String(e) };
+    }
+  }, [tr]);
+
+  const clearConversation = useCallback(() => {
+    historyRef.current = [];
+    setConversation([]);
+    setCurrentResponse('');
+  }, []);
+
+  const toggleMute = useCallback(() => {
     setIsMuted(prev => {
       const next = !prev;
       if (next && statusRef.current === 'listening') {
-        stopListening();
+        haltAll();
+        updateStatus('idle');
       }
       return next;
     });
-  };
-
-  const executeSystemTool = async (name: string, args: any) => {
-    if (typeof window !== 'undefined' && (window as any).require) {
-      try {
-        const { ipcRenderer } = (window as any).require('electron');
-        const res = await ipcRenderer.invoke('execute-tool', { name, args });
-        console.log('[JARVIS Tool Executed]:', res);
-        return res;
-      } catch (e) {
-        console.error('IPC Tool error:', e);
-      }
-    }
-    return 'Fonksiyon çalıştırılamadı.';
-  };
-
-  const focusAppWindow = useCallback(() => {
-    if (typeof window !== 'undefined' && (window as any).require) {
-      try {
-        const { ipcRenderer } = (window as any).require('electron');
-        ipcRenderer.send('show-and-focus-window');
-      } catch (e) {
-        console.warn('IPC focus error:', e);
-      }
-    }
-  }, []);
-
-  // Clean raw AI response from VTT timestamp artifacts
-  const cleanResponseText = (text: string): string => {
-    return text.replace(/\d{2}:\d{2}:\d{2}\.\d+/g, '').replace(/\s+/g, ' ').trim();
-  };
-
-  const discoveredModelsRef = useRef<string[]>([]);
-
-  // Discover actual supported models dynamically for the user's API Key with fast timeout
-  const discoverAvailableModels = async (key: string): Promise<string[]> => {
-    if (discoveredModelsRef.current.length > 0) {
-      return discoveredModelsRef.current;
-    }
-
-    const defaultModels = GEMINI_CONFIG.MODELS;
-
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), GEMINI_CONFIG.DISCOVERY_TIMEOUT_MS || 3500);
-
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`, {
-        signal: controller.signal
-      });
-      clearTimeout(timer);
-
-      const data = await res.json();
-      if (data.models && Array.isArray(data.models)) {
-        const supported = data.models
-          .filter((m: any) => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-          .map((m: any) => m.name.replace(/^models\//, ''))
-          .filter((name: string) => !name.includes('embedding') && !name.includes('imagen') && !name.includes('aqa') && !name.includes('tts') && !name.includes('native-audio') && !name.includes('live') && !name.includes('-image'));
-
-        // Prioritize fast 2.0 and 1.5 flash models
-        supported.sort((a: string, b: string) => {
-          if (a.includes('2.0-flash') && !b.includes('2.0-flash')) return -1;
-          if (b.includes('2.0-flash') && !a.includes('2.0-flash')) return 1;
-          if (a.includes('flash') && !b.includes('flash')) return -1;
-          if (!a.includes('flash') && b.includes('flash')) return 1;
-          return 0;
-        });
-
-        if (supported.length > 0) {
-          discoveredModelsRef.current = supported;
-          return supported;
-        }
-      }
-    } catch (e) {
-      console.warn('[JARVIS] Fast model discovery timed out or failed, using default fast models:', e);
-    }
-
-    discoveredModelsRef.current = defaultModels;
-    return defaultModels;
-  };
-
-  // Robust, Low-Latency Gemini REST Call with 8s AbortController and Fast Failover
-  const callGeminiREST = async (parts: any[], sysInstruction: string, reqSessionId?: number) => {
-    if (!apiKey) throw new Error('API Key eksik. Lütfen Ayarlar bölümünden API anahtarınızı girin.');
-
-    let candidateModels = discoveredModelsRef.current;
-    if (!candidateModels || candidateModels.length === 0) {
-      candidateModels = await discoverAvailableModels(apiKey);
-    }
-
-    // Combine guaranteed stable models with discovered ones
-    const prioritizedModels = Array.from(new Set([
-      GEMINI_CONFIG.CHAT_MODEL,
-      ...GEMINI_CONFIG.MODELS,
-      ...candidateModels
-    ]));
-
-    let lastError: any = null;
-
-    for (const model of prioritizedModels) {
-      if (reqSessionId !== undefined && reqSessionId !== sessionIdRef.current) {
-        throw new Error('ABORTED_BY_USER');
-      }
-
-      const controller = new AbortController();
-      activeAbortControllerRef.current = controller;
-      const timeoutTimer = setTimeout(() => {
-        controller.abort();
-      }, GEMINI_CONFIG.REQUEST_TIMEOUT_MS || 8000);
-
-      try {
-        console.log(`[Gemini REST] Connecting to model: ${model}...`);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        const bodyPayload: any = {
-          contents: [{ parts: parts }],
-          system_instruction: { parts: [{ text: sysInstruction }] },
-          generationConfig: {
-            maxOutputTokens: 200,
-            temperature: 0.7
-          }
-        };
-
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(bodyPayload),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutTimer);
-
-        if (reqSessionId !== undefined && reqSessionId !== sessionIdRef.current) {
-          throw new Error('ABORTED_BY_USER');
-        }
-
-        const data = await res.json();
-
-        if (res.ok && data.candidates && data.candidates[0]?.content?.parts) {
-          console.log(`[Gemini REST] Connected successfully with ${model}`);
-          let combinedText = '';
-          for (const part of data.candidates[0].content.parts) {
-            if (part.text) {
-              combinedText += part.text;
-            }
-            if (part.functionCall) {
-              const toolResult = await executeSystemTool(part.functionCall.name, part.functionCall.args);
-              setConversation(prev => [
-                ...prev,
-                { role: 'model', content: `⚙️ [Sistem Aksiyonu]: ${toolResult}` }
-              ]);
-              playJarvisSound('success');
-            }
-          }
-          return cleanResponseText(combinedText) || 'İşlem tamamlandı.';
-        }
-
-        if (data.error) {
-          console.warn(`[Gemini ${model} API Error ${data.error.code}]:`, data.error.message);
-          lastError = data.error;
-          // Immediate failover to next model for 503, 429, 404, etc.
-          continue;
-        }
-      } catch (err: any) {
-        clearTimeout(timeoutTimer);
-        if (err.message === 'ABORTED_BY_USER' || isAbortedRef.current) {
-          throw new Error('ABORTED_BY_USER');
-        }
-        if (err.name === 'AbortError') {
-          console.warn(`[Gemini ${model} Timeout (8s)] Rapid failover to next model...`);
-          lastError = new Error(`Model (${model}) 8 saniye içinde yanıt vermedi.`);
-        } else {
-          console.warn(`[Gemini ${model} Network Exception]:`, err);
-          lastError = err;
-        }
-        continue;
-      }
-    }
-
-    if (lastError) {
-      console.error('[Gemini All Models Exhausted]:', lastError);
-      throw new Error(lastError.message || 'Gemini servisleri şu an yoğun, lütfen bağlantınızı veya API anahtarınızı kontrol edin.');
-    }
-
-    throw new Error('Gemini API yanıt vermedi.');
-  };
-
-  // Check if spoken text is an interrupt trigger (supports 'durdur', 'dur', 'sus', 'iptal', etc.)
-  const isInterruptCommand = useCallback((text: string): boolean => {
-    const clean = text
-      .toLocaleLowerCase('tr-TR')
-      .replace(/[.,!?;:'"()[\]{}\-_]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
-
-    if (!clean) return false;
-
-    const exactOrEdgePhrases = [
-      'durdur', 'dur', 'sus', 'kes', 'kapat', 'iptal', 'yeter', 'bekle',
-      'sessiz', 'sessiz ol', 'konuşma', 'konuşmayı durdur', 'sohbeti durdur',
-      'sesi kes', 'sesini kes', 'jarvis dur', 'jarvis durdur', 'jarvis sus',
-      'jarvis kes', 'jarvis iptal', 'hemen durdur', 'hemen dur', 'artık dur',
-      'tamam dur', 'tamam sus', 'tamam yeter', 'stop', 'cancel', 'pause',
-      'shut up', 'quiet', 'be quiet', 'jarvis stop'
-    ];
-
-    if (exactOrEdgePhrases.some(w => clean === w || clean.startsWith(w + ' ') || clean.endsWith(' ' + w))) {
-      return true;
-    }
-
-    // Also match if user says a short phrase (< 5 words) containing a strong stop command like "durdur"
-    const words = clean.split(' ');
-    if (words.length <= 5) {
-      const strongTokens = ['durdur', 'durdursana', 'dur', 'sus', 'sussana', 'iptal', 'stop', 'cancel'];
-      if (words.some(word => strongTokens.includes(word))) {
-        return true;
-      }
-    }
-
-    return false;
-  }, []);
-
-  // Immediate Voice Chat Stop & Interrupt System
-  const stopVoiceChat = useCallback(() => {
-    console.log('[JARVIS] Halting all voice chat, speech output, and in-flight requests immediately...');
-    isAbortedRef.current = true;
-    sessionIdRef.current += 1;
-
-    if (activeAbortControllerRef.current) {
-      try { activeAbortControllerRef.current.abort(); } catch (e) {}
-      activeAbortControllerRef.current = null;
-    }
-
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-    if (maxTimeoutRef.current) {
-      clearTimeout(maxTimeoutRef.current);
-      maxTimeoutRef.current = null;
-    }
-
-    latestTranscriptRef.current = '';
-
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.onended = null;
-        currentAudioRef.current.onerror = null;
-        currentAudioRef.current.pause();
-        currentAudioRef.current.src = '';
-      } catch (e) {}
-      currentAudioRef.current = null;
-    }
-
-    if ('speechSynthesis' in window) {
-      try { window.speechSynthesis.cancel(); } catch (e) {}
-    }
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onend = null;
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.abort();
-      } catch (e) {}
-      recognitionRef.current = null;
-    }
-
-    if (bargeInRecognitionRef.current) {
-      try {
-        bargeInRecognitionRef.current.onend = null;
-        bargeInRecognitionRef.current.onresult = null;
-        bargeInRecognitionRef.current.abort();
-      } catch (e) {}
-      bargeInRecognitionRef.current = null;
-    }
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop(); } catch (e) {}
-    }
-
-    setAudioLevel(0);
-    updateStatus('idle');
-    playJarvisSound('stop');
-  }, [updateStatus]);
-
-  // Background Barge-In Listener active while JARVIS is speaking or processing so saying "durdur" stops immediately
-  const startBargeInMonitor = useCallback(() => {
-    if (isMuted) return;
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    if (bargeInRecognitionRef.current) {
-      try {
-        bargeInRecognitionRef.current.onend = null;
-        bargeInRecognitionRef.current.abort();
-      } catch (e) {}
-      bargeInRecognitionRef.current = null;
-    }
-
-    try {
-      const monitor = new SpeechRecognition();
-      bargeInRecognitionRef.current = monitor;
-      monitor.lang = language;
-      monitor.interimResults = true;
-      monitor.continuous = true;
-      monitor.maxAlternatives = 1;
-
-      monitor.onresult = (event: any) => {
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcript = (event.results[i][0]?.transcript || '').trim();
-          if (transcript && isInterruptCommand(transcript)) {
-            console.log('[JARVIS Barge-In Interrupt Detected ("durdur")]:', transcript);
-            stopVoiceChat();
-            return;
-          }
-        }
-      };
-
-      monitor.onend = () => {
-        if ((statusRef.current === 'speaking' || statusRef.current === 'processing') && !isAbortedRef.current) {
-          try { monitor.start(); } catch (e) {}
-        }
-      };
-
-      monitor.start();
-    } catch (e) {
-      // Ignore if SpeechRecognition is already active
-    }
-  }, [isMuted, language, isInterruptCommand, stopVoiceChat]);
-
-  // Check if spoken text contains Wake Word
-  const checkWakeWord = (text: string): { isWake: boolean; command: string } => {
-    const clean = text.toLowerCase().trim();
-    const wakePatterns = [
-      /^hey\s+jarvis[\s,]*/i,
-      /^ey\s+jarvis[\s,]*/i,
-      /^merhaba\s+jarvis[\s,]*/i,
-      /^jarvis\s+uyan[\s,]*/i,
-      /^jarvis[\s,]*/i,
-      /^cervis[\s,]*/i
-    ];
-
-    for (const pattern of wakePatterns) {
-      if (pattern.test(clean)) {
-        const remaining = clean.replace(pattern, '').trim();
-        return { isWake: true, command: remaining };
-      }
-    }
-
-    if (clean === 'jarvis' || clean === 'hey jarvis' || clean === 'cervis') {
-      return { isWake: true, command: '' };
-    }
-
-    return { isWake: false, command: text };
-  };
-
-  // Fast Real-Time Speech Recognition with Wake Word Detection & 380ms Silence Cutoff
-  const startListening = async () => {
-    if (!apiKey) {
-      setErrorMessage(language === 'tr-TR' ? 'Lütfen önce API anahtarını girin.' : 'Please enter API key first.');
-      updateStatus('error');
-      playJarvisSound('error');
-      return;
-    }
-
-    if (isMuted) {
-      setErrorMessage(language === 'tr-TR' ? 'Mikrofon kapalı (Sessizde). Lütfen önce mikrofonu açın.' : 'Microphone is muted.');
-      updateStatus('error');
-      playJarvisSound('error');
-      return;
-    }
-    
-    // Stop any ongoing speech playback or barge-in monitor
-    if (bargeInRecognitionRef.current) {
-      try {
-        bargeInRecognitionRef.current.onend = null;
-        bargeInRecognitionRef.current.abort();
-      } catch (e) {}
-      bargeInRecognitionRef.current = null;
-    }
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-    }
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-    }
-
-    isAbortedRef.current = false;
-    sessionIdRef.current += 1;
-    const currentSession = sessionIdRef.current;
-
-    setErrorMessage('');
-    playJarvisSound('start');
-    updateStatus('listening');
-    latestTranscriptRef.current = '';
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (SpeechRecognition) {
-      try {
-        console.log('[JARVIS] Starting Ultra-Fast Web Speech Recognition...');
-        const recognition = new SpeechRecognition();
-        recognitionRef.current = recognition;
-        recognition.lang = language;
-        recognition.interimResults = true;
-        recognition.continuous = true;
-        recognition.maxAlternatives = 1;
-
-        recognition.onresult = (event: any) => {
-          let interim = '';
-          let final = '';
-          let hasFinal = false;
-
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              final += event.results[i][0].transcript;
-              hasFinal = true;
-            } else {
-              interim += event.results[i][0].transcript;
-            }
-          }
-
-          const currentWords = (final || interim).trim();
-          if (currentWords) {
-            console.log('[JARVIS Live Transcript]:', currentWords);
-
-            // 1. Direct Instant Interrupt Detection ('durdur', 'dur', 'sus', 'iptal')
-            if (isInterruptCommand(currentWords) || isInterruptCommand(interim) || isInterruptCommand(final)) {
-              console.log('[JARVIS Instant Interrupt Triggered]:', currentWords);
-              stopVoiceChat();
-              return;
-            }
-
-            latestTranscriptRef.current = currentWords;
-            setLiveTranscript(currentWords);
-
-            // 2. Wake Word Detection -> Bring App Window to Front
-            const wakeCheck = checkWakeWord(currentWords);
-            if (wakeCheck.isWake) {
-              console.log('[JARVIS Wake Word Detected! Focusing Window]:', currentWords);
-              focusAppWindow();
-              playJarvisSound('wake');
-            }
-
-            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-
-            // If final result ready: trigger in 50ms; if interim: trigger after 380ms of silence
-            const debounceMs = hasFinal ? 50 : 380;
-            silenceTimerRef.current = setTimeout(async () => {
-              if (isAbortedRef.current || currentSession !== sessionIdRef.current) return;
-              const textToSend = latestTranscriptRef.current;
-              if (textToSend && statusRef.current === 'listening') {
-                if (isInterruptCommand(textToSend)) {
-                  stopVoiceChat();
-                  return;
-                }
-                console.log('[JARVIS Fast VAD Executing]:', textToSend);
-                stopListening();
-
-                const wakeData = checkWakeWord(textToSend);
-                if (wakeData.isWake) {
-                  focusAppWindow();
-                  if (!wakeData.command) {
-                    // Spoken only "Jarvis" -> Greet and be ready
-                    const reply = language === 'tr-TR' ? 'Dinliyorum efendim, buyrun.' : 'Yes sir, I am listening.';
-                    setConversation(prev => [
-                      ...prev,
-                      { role: 'user', content: textToSend },
-                      { role: 'model', content: reply }
-                    ]);
-                    speakText(reply);
-                    return;
-                  }
-                  // Spoken "Jarvis [command]" -> execute command
-                  await sendTextMessage(wakeData.command);
-                } else {
-                  await sendTextMessage(textToSend);
-                }
-              }
-            }, debounceMs);
-          }
-        };
-
-        recognition.onerror = (event: any) => {
-          console.warn('[JARVIS Speech Recognition Error]:', event.error);
-          if (event.error !== 'no-speech' && event.error !== 'aborted' && !isAbortedRef.current) {
-            fallbackMediaRecorder();
-          }
-        };
-
-        recognition.onend = () => {
-          if (statusRef.current === 'listening' && !latestTranscriptRef.current) {
-            updateStatus('idle');
-          }
-          if (isAlwaysListeningRef.current && !isMuted && !isAbortedRef.current) {
-            setTimeout(() => {
-              try {
-                if (isAlwaysListeningRef.current && statusRef.current !== 'speaking' && statusRef.current !== 'processing') {
-                  recognition.start();
-                }
-              } catch(e) {}
-            }, 300);
-          }
-        };
-
-        recognition.start();
-        return;
-      } catch (e) {
-        console.warn('[JARVIS Speech Recognition Exception, falling back]:', e);
-      }
-    }
-
-    fallbackMediaRecorder();
-  };
-
-  const fallbackMediaRecorder = async () => {
-    audioChunksRef.current = [];
-    hasSpokenRef.current = false;
-    isStoppingRef.current = false;
-    lastSoundTimeRef.current = Date.now();
-
-    try {
-      console.log('[JARVIS] Requesting MediaRecorder fallback...');
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
-      let mimeType = 'audio/webm';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = '';
-      }
-      
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: mimeType ? mimeType : undefined });
-      mediaRecorderRef.current = mediaRecorder;
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach(track => track.stop());
-        if (isAbortedRef.current) {
-          console.log('[JARVIS] MediaRecorder stopped due to user interrupt — skipping Gemini upload.');
-          return;
-        }
-        console.log('[JARVIS] MediaRecorder stopped. Processing audio...');
-        const actualMimeType = mediaRecorder.mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType });
-
-        if (audioBlob.size === 0) {
-          updateStatus('error');
-          setErrorMessage('Mikrofondan ses alınamadı.');
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.readAsDataURL(audioBlob);
-        reader.onloadend = async () => {
-          if (isAbortedRef.current) return;
-          const base64Data = reader.result as string;
-          const base64Audio = base64Data.split(',')[1];
-          await sendAudioToGemini(base64Audio, actualMimeType);
-        };
-        reader.onerror = () => {
-          updateStatus('error');
-          setErrorMessage('Ses dosyası okunamadı.');
-        };
-      };
-
-      mediaRecorder.start(200);
-
-      // Auto Voice Silence Detection (VAD)
-      audioCtxRef.current = new AudioContext();
-      const source = audioCtxRef.current.createMediaStreamSource(stream);
-      const analyser = audioCtxRef.current.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      
-      const updateLevel = () => {
-        if (mediaRecorder.state === 'recording' && !isAbortedRef.current) {
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
-          const level = (sum / dataArray.length) / 255;
-          setAudioLevel(level);
-
-          const now = Date.now();
-          if (level > 0.08) {
-            hasSpokenRef.current = true;
-            lastSoundTimeRef.current = now;
-          }
-
-          if (hasSpokenRef.current && (now - lastSoundTimeRef.current > 480) && !isStoppingRef.current) {
-            console.log('[JARVIS VAD] Auto-detected end of speech. Stopping...');
-            isStoppingRef.current = true;
-            stopListening();
-            return;
-          }
-
-          requestAnimationFrame(updateLevel);
-        } else {
-          setAudioLevel(0);
-        }
-      };
-      updateLevel();
-
-      if (maxTimeoutRef.current) clearTimeout(maxTimeoutRef.current);
-      maxTimeoutRef.current = setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording' && !isStoppingRef.current) {
-          isStoppingRef.current = true;
-          stopListening();
-        }
-      }, 10000);
-
-    } catch (e: any) {
-      console.error('[JARVIS] Microphone error:', e);
-      updateStatus('error');
-      setErrorMessage(language === 'tr-TR' ? `Mikrofon Hatası: ${e.message}` : `Mic Error: ${e.message}`);
-    }
-  };
-
-  const stopListening = () => {
-    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    if (maxTimeoutRef.current) clearTimeout(maxTimeoutRef.current);
-    playJarvisSound('stop');
-
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
-    }
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      updateStatus('processing');
-      mediaRecorderRef.current.stop();
-    } else {
-      if (statusRef.current === 'listening') {
-        updateStatus('idle');
-      }
-    }
-  };
-
-  const checkForSystemCommands = async (text: string) => {
-    const lower = text.toLowerCase();
-    
-    // Application Opening Triggers
-    if (lower.includes('chrome') || lower.includes('tarayıcı') || lower.includes('browser') || lower.includes('google') || lower.includes('internet')) {
-      await executeSystemTool('open_app', { appName: 'chrome' });
-    } else if (lower.includes('youtube')) {
-      await executeSystemTool('open_app', { appName: 'youtube' });
-    } else if (lower.includes('spotify')) {
-      await executeSystemTool('open_app', { appName: 'spotify' });
-    } else if (lower.includes('hesap makinesi') || lower.includes('calc')) {
-      await executeSystemTool('open_app', { appName: 'calc' });
-    } else if (lower.includes('not defteri') || lower.includes('notepad')) {
-      await executeSystemTool('open_app', { appName: 'notepad' });
-    } else if (lower.includes('vscode') || lower.includes('code aç')) {
-      await executeSystemTool('open_app', { appName: 'code' });
-    }
-
-    // Media Control Triggers
-    if (lower.includes('müziği durdur') || lower.includes('müziği başlat') || lower.includes('şarkıyı geç') || lower.includes('sonraki şarkı') || lower.includes('sesi yükselt') || lower.includes('sesi kıs')) {
-      let action = 'playpause';
-      if (lower.includes('geç') || lower.includes('sonraki')) action = 'next';
-      else if (lower.includes('yükselt')) action = 'volup';
-      else if (lower.includes('kıs')) action = 'voldown';
-      await executeSystemTool('control_media', { action });
-    }
-
-    // Hands-Free File / Folder Search Triggers
-    if (lower.includes('dosyasını aç') || lower.includes('klasörünü aç') || lower.includes('indirilenlerdeki') || lower.includes('masaüstündeki') || lower.includes('belgelerdeki')) {
-      let targetFolder = '';
-      if (lower.includes('indirilen')) targetFolder = 'downloads';
-      else if (lower.includes('masaüstü')) targetFolder = 'desktop';
-      else if (lower.includes('belge')) targetFolder = 'documents';
-
-      const words = lower.split(' ');
-      const query = words.find(w => w.length > 3 && !['aç', 'dosyasını', 'klasörünü', 'indirilenlerdeki', 'masaüstündeki', 'belgelerdeki'].includes(w)) || '';
-      if (query) {
-        await executeSystemTool('search_file', { fileName: query, targetFolder });
-      }
-    }
-
-    // Voice Notes Triggers
-    if (lower.startsWith('not al') || lower.startsWith('not ekle')) {
-      const noteContent = text.replace(/^(not al|not ekle)/gi, '').trim();
-      if (noteContent) {
-        await executeSystemTool('save_note', { text: noteContent });
-      }
-    }
-
-    // Smart Voice Reminder & Timer Triggers
-    if (lower.includes('hatırlat') || lower.includes('zamanlayıcı')) {
-      let delaySeconds = 10;
-      const secMatch = lower.match(/(\d+)\s*saniye/);
-      const minMatch = lower.match(/(\d+)\s*dakika/);
-
-      if (secMatch) delaySeconds = parseInt(secMatch[1], 10);
-      else if (minMatch) delaySeconds = parseInt(minMatch[1], 10) * 60;
-
-      const title = text.replace(/(\d+)\s*(saniye|dakika)\s*sonra/gi, '').replace(/(hatırlat|zamanlayıcı)/gi, '').trim() || 'Hatırlatma';
-      await executeSystemTool('set_reminder', { title, delaySeconds });
-    }
-  };
-
-  const sendAudioToGemini = async (base64Audio: string, mimeType: string) => {
-    if (isAbortedRef.current) return;
-    const reqSessionId = sessionIdRef.current;
-    updateStatus('processing');
-    setErrorMessage('');
-    startBargeInMonitor();
-
-    try {
-      const sysInstruction = language === 'tr-TR' 
-        ? "Sen JARVIS adında gelişmiş ve son derece hızlı bir yapay zeka asistanısın. Yanıtların TEK ve KISA cümle, doğrudan, net ve akıcı Türkçe olmalı. Bilgisayarda tarayıcı, uygulama açma ve arama yetkin vardır."
-        : "You are JARVIS, an advanced AI assistant. Respond in a single, ultra-concise sentence.";
-
-      const cleanMime = (mimeType || 'audio/webm').split(';')[0];
-
-      const parts = [
-        { text: "Ses kaydımı dinle, isteğimi yerine getir ve Türkçe yanıtla." },
-        { inline_data: { mime_type: cleanMime, data: base64Audio } }
-      ];
-
-      const rawText = await callGeminiREST(parts, sysInstruction, reqSessionId);
-      if (isAbortedRef.current || reqSessionId !== sessionIdRef.current) return;
-
-      const text = cleanResponseText(rawText);
-
-      await checkForSystemCommands(text);
-      if (isAbortedRef.current || reqSessionId !== sessionIdRef.current) return;
-
-      setConversation(prev => [
-        ...prev, 
-        { role: 'user', content: '🎤 [Sesli Mesaj]' },
-        { role: 'model', content: text }
-      ]);
-      setCurrentResponse(text);
-
-      if (text) {
-        speakText(text, reqSessionId);
-      } else {
-        updateStatus('idle');
-      }
-
-    } catch (error: any) {
-      if (error.message === 'ABORTED_BY_USER' || isAbortedRef.current) return;
-      console.error('[JARVIS] Audio Gemini Error:', error);
-      updateStatus('error');
-      setErrorMessage(error.message || 'Gemini bağlantı hatası.');
-      playJarvisSound('error');
-      setCurrentResponse('');
-    }
-  };
-
-  const sendTextMessage = async (text: string) => {
-    if (!text.trim()) return;
-
-    if (isInterruptCommand(text)) {
-      stopVoiceChat();
-      return;
-    }
-
-    isAbortedRef.current = false;
-    sessionIdRef.current += 1;
-    const reqSessionId = sessionIdRef.current;
-
-    setConversation(prev => [...prev, { role: 'user', content: text }]);
-    updateStatus('processing');
-    setErrorMessage('');
-    startBargeInMonitor();
-
-    try {
-      const sysInstruction = language === 'tr-TR' 
-        ? "Sen JARVIS adında gelişmiş ve son derece hızlı bir yapay zeka asistanısın. Yanıtların TEK ve KISA cümle, doğrudan, net ve akıcı Türkçe olmalı. Asla gereksiz açıklama yapma. Bilgisayarda tarayıcı, uygulama açma ve sistem kontrolü yetkin vardır."
-        : "You are JARVIS. Respond in a single, ultra-concise, natural sentence.";
-
-      const parts = [{ text: text }];
-
-      await checkForSystemCommands(text);
-      if (isAbortedRef.current || reqSessionId !== sessionIdRef.current) return;
-
-      const rawAnswer = await callGeminiREST(parts, sysInstruction, reqSessionId);
-      if (isAbortedRef.current || reqSessionId !== sessionIdRef.current) return;
-
-      const answer = cleanResponseText(rawAnswer);
-
-      setConversation(prev => [...prev, { role: 'model', content: answer }]);
-      setCurrentResponse(answer);
-      speakText(answer, reqSessionId);
-
-    } catch (error: any) {
-      if (error.message === 'ABORTED_BY_USER' || isAbortedRef.current) return;
-      console.error('[JARVIS] Text Gemini Error:', error);
-      updateStatus('error');
-      setErrorMessage(error.message || 'Gemini bağlantı hatası.');
-      playJarvisSound('error');
-    }
-  };
-
-  const sendImageToGemini = async (base64Image: string, promptText: string) => {
-    isAbortedRef.current = false;
-    sessionIdRef.current += 1;
-    const reqSessionId = sessionIdRef.current;
-
-    updateStatus('processing');
-    setErrorMessage('');
-    startBargeInMonitor();
-
-    try {
-      const sysInstruction = "Sen JARVIS adında görsel analizi yapabilen bir asistansın. Ekrandaki/kameradaki görüntüyü Türkçe incele ve tek kısa cümlede özetle.";
-      
-      const parts = [
-        { text: promptText || "Bu görüntüde ne var? Kısaca açıkla." },
-        { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
-      ];
-
-      const rawText = await callGeminiREST(parts, sysInstruction, reqSessionId);
-      if (isAbortedRef.current || reqSessionId !== sessionIdRef.current) return;
-
-      const text = cleanResponseText(rawText);
-      
-      setConversation(prev => [
-        ...prev, 
-        { role: 'user', content: '📷 [Kamera Görüntüsü]' },
-        { role: 'model', content: text }
-      ]);
-      setCurrentResponse(text);
-      speakText(text, reqSessionId);
-
-    } catch (e: any) {
-      if (e.message === 'ABORTED_BY_USER' || isAbortedRef.current) return;
-      console.error('[JARVIS] Vision Gemini Error:', e);
-      updateStatus('error');
-      setErrorMessage(e.message || 'Kamera/Görsel Hatası.');
-      playJarvisSound('error');
-    }
-  };
-
-  // Studio-Quality Natural Human Voice Output (Edge Neural TTS + Audio Analyser for 3D Orb)
-  const speakText = async (text: string, reqSessionId?: number) => {
-    const activeSession = reqSessionId ?? sessionIdRef.current;
-    if (!text || isAbortedRef.current || activeSession !== sessionIdRef.current) {
-      updateStatus('idle');
-      return;
-    }
-
-    // Clean text from markdown syntax, emojis, and hashtags for crisp natural pronunciation
-    const cleanText = text
-      .replace(/[*#_`~>\[\]()]/g, '')
-      .replace(/\bhttps?:\/\/\S+/gi, '')
-      .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
-      .trim();
-
-    if (!cleanText) {
-      updateStatus('idle');
-      return;
-    }
-
-    updateStatus('speaking');
-    startBargeInMonitor();
-
-    // 1. Try Studio Natural Human Neural Voice via Electron
-    if (typeof window !== 'undefined' && (window as any).require) {
-      try {
-        const { ipcRenderer } = (window as any).require('electron');
-        const voiceName = language === 'tr-TR' ? 'tr-TR-AhmetNeural' : 'en-US-ChristopherNeural';
-        const audioBase64 = await ipcRenderer.invoke('synthesize-speech', { text: cleanText, voice: voiceName });
-
-        // Check if user said "durdur" while TTS was synthesizing!
-        if (isAbortedRef.current || activeSession !== sessionIdRef.current) {
-          return;
-        }
-
-        if (audioBase64) {
-          if (currentAudioRef.current) {
-            currentAudioRef.current.pause();
-            currentAudioRef.current = null;
-          }
-
-          const audio = new Audio(`data:audio/mp3;base64,${audioBase64}`);
-          currentAudioRef.current = audio;
-
-          // Connect Web Audio API Analyser to drive 3D Orb visualizer in real-time
-          try {
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            const source = audioCtx.createMediaElementSource(audio);
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-            analyser.connect(audioCtx.destination);
-            const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-            const updateVisualizer = () => {
-              if (!audio.paused && !audio.ended && !isAbortedRef.current) {
-                analyser.getByteFrequencyData(dataArray);
-                let sum = 0;
-                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                const level = (sum / dataArray.length) / 255;
-                setAudioLevel(level * 1.5);
-                requestAnimationFrame(updateVisualizer);
-              } else {
-                setAudioLevel(0);
-              }
-            };
-
-            audio.onplay = () => {
-              audioCtx.resume();
-              updateVisualizer();
-            };
-          } catch (e) {
-            // Web Audio fallback
-          }
-
-          audio.onended = () => {
-            if (bargeInRecognitionRef.current) {
-              try {
-                bargeInRecognitionRef.current.onend = null;
-                bargeInRecognitionRef.current.abort();
-              } catch (e) {}
-              bargeInRecognitionRef.current = null;
-            }
-            updateStatus('idle');
-            setAudioLevel(0);
-            if (isAlwaysListeningRef.current && !isMuted && !isAbortedRef.current) {
-              setTimeout(() => {
-                if (isAlwaysListeningRef.current && !isAbortedRef.current) startListening();
-              }, 400);
-            }
-          };
-
-          audio.onerror = () => {
-            if (!isAbortedRef.current && activeSession === sessionIdRef.current) {
-              fallbackSpeechSynthesis(cleanText, activeSession);
-            }
-          };
-
-          if (isAbortedRef.current || activeSession !== sessionIdRef.current) return;
-          await audio.play();
-          return;
-        }
-      } catch (e) {
-        console.warn('[JARVIS Neural Voice Fallback to Web Speech]:', e);
-      }
-    }
-
-    // 2. Fallback to Web Speech Synthesis
-    if (!isAbortedRef.current && activeSession === sessionIdRef.current) {
-      fallbackSpeechSynthesis(cleanText, activeSession);
-    }
-  };
-
-  const fallbackSpeechSynthesis = (text: string, reqSessionId?: number) => {
-    const activeSession = reqSessionId ?? sessionIdRef.current;
-    if (isAbortedRef.current || activeSession !== sessionIdRef.current) return;
-
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = language;
-      utterance.pitch = voicePitch;
-      utterance.rate = voiceRate;
-
-      const voices = window.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(v => 
-        v.lang.startsWith('tr') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Tolga') || v.name.includes('Male'))
-      ) || voices.find(v => v.lang.startsWith('tr'));
-
-      if (preferredVoice) utterance.voice = preferredVoice;
-
-      utterance.onstart = () => updateStatus('speaking');
-      utterance.onend = () => {
-        if (bargeInRecognitionRef.current) {
-          try {
-            bargeInRecognitionRef.current.onend = null;
-            bargeInRecognitionRef.current.abort();
-          } catch (e) {}
-          bargeInRecognitionRef.current = null;
-        }
-        updateStatus('idle');
-        setAudioLevel(0);
-        if (isAlwaysListeningRef.current && !isMuted && !isAbortedRef.current) {
-          setTimeout(() => {
-            if (isAlwaysListeningRef.current && !isAbortedRef.current) startListening();
-          }, 400);
-        }
-      };
-      utterance.onerror = () => {
-        updateStatus('idle');
-        setAudioLevel(0);
-      };
-
-      window.speechSynthesis.speak(utterance);
-    } else {
-      updateStatus('idle');
-    }
-  };
+  }, [haltAll, updateStatus]);
+
+  const toggleAlwaysListening = useCallback(() => {
+    const next = !live.current.isAlwaysListening;
+    live.current.isAlwaysListening = next;
+    setIsAlwaysListening(next);
+    localStorage.setItem('jarvis_always_listening', String(next));
+    if (next && statusRef.current === 'idle') setTimeout(() => startListeningRef.current(), 200);
+    if (!next && statusRef.current === 'listening') { haltAll(); updateStatus('idle'); }
+  }, [haltAll, updateStatus]);
+
+  // Clean up the microphone and audio when the app unmounts
+  useEffect(() => () => { haltAll(); }, [haltAll]);
 
   return {
     status,
@@ -1214,6 +703,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     currentResponse,
     liveTranscript,
     errorMessage,
+    errorKind,
+    notice,
     isMuted,
     isAlwaysListening,
     toggleAlwaysListening,
@@ -1221,6 +712,16 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     setVoicePitch,
     voiceRate,
     setVoiceRate,
+    voiceEngine,
+    setVoiceEngine,
+    geminiVoice,
+    setGeminiVoice,
+    edgeVoice,
+    setEdgeVoice,
+    previewVoice,
+    checkConnection,
+    clearConversation,
+    clearError,
     toggleMute,
     startListening,
     stopListening,

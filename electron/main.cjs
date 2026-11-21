@@ -231,8 +231,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
-    minWidth: 1024,
-    minHeight: 640,
+    // The layout adapts down to phone-like widths, so the window can be snapped small
+    minWidth: 380,
+    minHeight: 560,
     frame: false,
     // Windows 11 22H2+: let the system Mica material show through the translucent sidebars
     ...(supportsMaterial
@@ -249,6 +250,13 @@ function createWindow() {
   });
 
   mainWindow.maximize();
+
+  // Microphone/camera for our own UI only; everything else is refused
+  const ses = mainWindow.webContents.session;
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(['media', 'audioCapture', 'videoCapture', 'notifications', 'clipboard-sanitized-write'].includes(permission));
+  });
+  ses.setPermissionCheckHandler((_wc, permission) => ['media', 'audioCapture', 'videoCapture', 'notifications'].includes(permission));
 
   if (isDev) {
     mainWindow.loadURL('https://localhost:5173');
@@ -291,37 +299,65 @@ function createWindow() {
     console.log(`[Electron Tool] Executing ${name} with args:`, args);
 
     if (name === 'open_app') {
-      const appName = (args.appName || '').toLowerCase();
-      let cmd = '';
-
-      if (appName.includes('chrome') || appName.includes('tarayıcı') || appName.includes('browser') || appName.includes('google') || appName.includes('internet')) {
-        cmd = 'start https://www.google.com';
-      } else if (appName.includes('youtube')) {
-        cmd = 'start https://www.youtube.com';
-      } else if (appName.includes('spotify')) {
-        cmd = 'start spotify';
-      } else if (appName.includes('code') || appName.includes('vscode')) {
-        cmd = 'code .';
-      } else if (appName.includes('notepad') || appName.includes('not defteri')) {
-        cmd = 'start notepad';
-      } else if (appName.includes('download') || appName.includes('indirilen')) {
-        cmd = 'explorer %userprofile%\\Downloads';
-      } else if (appName.includes('desktop') || appName.includes('masaüstü')) {
-        cmd = 'explorer %userprofile%\\Desktop';
-      } else if (appName.includes('calc') || appName.includes('hesap makinesi')) {
-        cmd = 'start calc';
-      } else {
-        // Never pass free-form (AI- or remote-provided) text to the shell:
-        // `start ${appName}` allowed command injection (e.g. "calc & del ...").
-        return `${appName} için tanımlı bir kısayol yok. Desteklenenler: Chrome, YouTube, Spotify, VS Code, Not Defteri, Hesap Makinesi, İndirilenler, Masaüstü.`;
+      const appName = String(args.appName || '').toLowerCase();
+      // Fixed commands only. Never pass free-form (AI- or remote-provided) text to the
+      // shell: `start ${appName}` allowed command injection (e.g. "calc & del ...").
+      const apps = [
+        { keys: ['youtube'], cmd: 'start https://www.youtube.com', label: 'YouTube' },
+        { keys: ['chrome', 'tarayıcı', 'browser', 'google', 'internet'], cmd: 'start https://www.google.com', label: 'Tarayıcı' },
+        { keys: ['spotify'], cmd: 'start spotify:', label: 'Spotify' },
+        { keys: ['vscode', 'code'], cmd: 'code', label: 'VS Code' },
+        { keys: ['notepad', 'not defteri'], cmd: 'start notepad', label: 'Not Defteri' },
+        { keys: ['calc', 'hesap makinesi'], cmd: 'start calc', label: 'Hesap Makinesi' },
+        { keys: ['downloads', 'download', 'indirilen'], cmd: 'explorer "%userprofile%\\Downloads"', label: 'İndirilenler' },
+        { keys: ['desktop', 'masaüstü'], cmd: 'explorer "%userprofile%\\Desktop"', label: 'Masaüstü' },
+        { keys: ['documents', 'belge'], cmd: 'explorer "%userprofile%\\Documents"', label: 'Belgeler' },
+        { keys: ['explorer', 'dosya gezgini'], cmd: 'explorer', label: 'Dosya Gezgini' },
+        { keys: ['settings', 'ayarlar'], cmd: 'start ms-settings:', label: 'Ayarlar' },
+        { keys: ['task_manager', 'görev yöneticisi'], cmd: 'start taskmgr', label: 'Görev Yöneticisi' },
+        { keys: ['paint'], cmd: 'start mspaint', label: 'Paint' },
+        { keys: ['terminal'], cmd: 'start wt || start cmd', label: 'Terminal' },
+        { keys: ['camera_app', 'kamera'], cmd: 'start microsoft.windows.camera:', label: 'Kamera' },
+        { keys: ['mail', 'posta'], cmd: 'start outlookmail:', label: 'Posta' },
+        { keys: ['calendar', 'takvim'], cmd: 'start outlookcal:', label: 'Takvim' },
+      ];
+      const match = apps.find(a => a.keys.some(k => appName === k || appName.includes(k)));
+      if (!match) {
+        return `${appName} için tanımlı bir kısayol yok.`;
       }
-
       return new Promise((resolve) => {
-        exec(cmd, (err) => {
-          if (err) resolve(`Tarayıcı / Uygulama başlatıldı.`);
-          else resolve(`${appName} başarıyla açıldı.`);
+        exec(match.cmd, { windowsHide: true }, (err) => {
+          resolve(err ? `${match.label} açılamadı.` : `${match.label} açıldı.`);
         });
       });
+    }
+
+    if (name === 'web_search') {
+      const { shell } = require('electron');
+      const query = String(args.query || '').slice(0, 300);
+      const q = encodeURIComponent(query);
+      const sites = {
+        google: `https://www.google.com/search?q=${q}`,
+        youtube: `https://www.youtube.com/results?search_query=${q}`,
+        maps: `https://www.google.com/maps/search/${q}`,
+        wikipedia: `https://tr.wikipedia.org/w/index.php?search=${q}`,
+        translate: `https://translate.google.com/?sl=auto&tl=tr&text=${q}`,
+      };
+      const site = Object.prototype.hasOwnProperty.call(sites, args.site) ? args.site : 'google';
+      await shell.openExternal(sites[site]);
+      return `"${query}" için ${site === 'youtube' ? 'YouTube' : site === 'maps' ? 'haritada' : 'tarayıcıda'} arama açıldı.`;
+    }
+
+    if (name === 'lock_screen') {
+      exec('rundll32.exe user32.dll,LockWorkStation', { windowsHide: true });
+      return 'Bilgisayar kilitlendi.';
+    }
+
+    if (name === 'get_system_status') {
+      const total = os.totalmem();
+      const used = total - os.freemem();
+      const hours = Math.floor(os.uptime() / 3600);
+      return `İşlemci yükü %${Math.round(cpuLoad)}, ${os.cpus().length} çekirdek. Bellek %${Math.round((used / total) * 100)} dolu (${(used / 1024 ** 3).toFixed(1)} / ${(total / 1024 ** 3).toFixed(1)} GB). Sistem ${hours} saattir açık.`;
     }
 
     if (name === 'save_memory') {
@@ -406,18 +442,21 @@ function createWindow() {
     }
 
     if (name === 'control_media') {
-      const action = (args.action || '').toLowerCase();
-      let key = '';
-      if (action.includes('play') || action.includes('pause') || action.includes('durdur') || action.includes('başlat')) key = '[char]179';
-      else if (action.includes('next') || action.includes('sonraki') || action.includes('geç')) key = '[char]176';
-      else if (action.includes('prev') || action.includes('önceki')) key = '[char]177';
-      else if (action.includes('volup') || action.includes('yükselt') || action.includes('arttır')) key = '[char]175';
-      else if (action.includes('voldown') || action.includes('kıs') || action.includes('azalt')) key = '[char]174';
-
-      if (key) {
-        const psCmd = `powershell -c "$wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys('${key}')"`;
-        exec(psCmd);
-        return `Medya kontrolü uygulandı: ${action}`;
+      const action = String(args.action || '').toLowerCase();
+      // Virtual-key codes for the media / volume keys
+      const keys = [
+        { match: ['play', 'pause', 'durdur', 'başlat'], code: 179, label: 'Oynat/duraklat' },
+        { match: ['next', 'sonraki', 'geç'], code: 176, label: 'Sonraki parça' },
+        { match: ['prev', 'önceki'], code: 177, label: 'Önceki parça' },
+        { match: ['mute', 'sessiz'], code: 173, label: 'Ses kapatıldı/açıldı' },
+        { match: ['volume_up', 'volup', 'yükselt', 'arttır'], code: 175, label: 'Ses yükseltildi', repeat: 3 },
+        { match: ['volume_down', 'voldown', 'kıs', 'azalt'], code: 174, label: 'Ses kısıldı', repeat: 3 },
+      ];
+      const k = keys.find(x => x.match.some(m => action.includes(m)));
+      if (k) {
+        const presses = Array(k.repeat || 1).fill(`$w.SendKeys([char]${k.code})`).join('; ');
+        exec(`powershell -NoProfile -Command "$w = New-Object -ComObject WScript.Shell; ${presses}"`, { windowsHide: true });
+        return `${k.label}.`;
       }
       return 'Medya aksiyonu anlaşılamadı.';
     }
@@ -498,22 +537,29 @@ function createWindow() {
     return null;
   });
 
-  ipcMain.handle('synthesize-speech', async (_event, { text, voice }) => {
+  ipcMain.handle('synthesize-speech', async (_event, { text, voice, rate, pitch }) => {
+    const allowed = /^[a-z]{2}-[A-Z]{2}-[A-Za-z]+Neural$/;
+    const selectedVoice = allowed.test(voice || '') ? voice : 'tr-TR-AhmetNeural';
+    const pct = (v) => {
+      const n = Math.round(((Number(v) || 1) - 1) * 100);
+      return `${n >= 0 ? '+' : ''}${Math.max(-50, Math.min(50, n))}%`;
+    };
     try {
       const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
       const tts = new MsEdgeTTS();
-      const selectedVoice = voice || 'tr-TR-AhmetNeural'; // Natural human Turkish assistant voice
-      await tts.setMetadata(selectedVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
-      
-      const { audioStream } = tts.toStream(text);
-      return new Promise((resolve, reject) => {
+      // 96 kbps instead of 48 kbps: clearly cleaner voice for a few extra KB
+      await tts.setMetadata(selectedVoice, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+      const { audioStream } = tts.toStream(String(text || '').slice(0, 3000), { rate: pct(rate), pitch: pct(pitch) });
+      return await new Promise((resolve, reject) => {
         const chunks = [];
+        const timer = setTimeout(() => reject(new Error('TTS timeout')), 15000);
         audioStream.on('data', chunk => chunks.push(chunk));
         audioStream.on('end', () => {
+          clearTimeout(timer);
           const buffer = Buffer.concat(chunks);
-          resolve(buffer.toString('base64'));
+          resolve(buffer.length ? buffer.toString('base64') : null);
         });
-        audioStream.on('error', err => reject(err));
+        audioStream.on('error', err => { clearTimeout(timer); reject(err); });
       });
     } catch (e) {
       console.error('[Edge TTS Error]:', e);
