@@ -132,6 +132,10 @@ export function App() {
     sendImageToGemini
   } = useJarvis(apiKey, language);
 
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const [appSettings, setAppSettings] = useState({ openAtLogin: true, miniBar: true, canAutoStart: false });
+
   // Global Escape Key listener to stop voice chat & speech immediately
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -191,20 +195,74 @@ export function App() {
           console.log('[JARVIS Reminder Triggered]:', data);
         };
 
+        // Mic button on the desktop mini menu: talk / finish / stop without opening the window
+        const handleMiniListen = () => {
+          const s = statusRef.current;
+          if (s === 'listening') stopListening();
+          else if (s === 'speaking' || s === 'processing') stopVoiceChat();
+          else startListening();
+        };
+        const handleMiniStop = () => stopVoiceChat();
+        const handleAppSettings = (_event: any, s: any) => setAppSettings(prev => ({ ...prev, ...s }));
+
         ipcRenderer.on('mobile-command', handleMobileCmd);
         ipcRenderer.on('trigger-voice-listening', handleTriggerListening);
         ipcRenderer.on('reminder-triggered', handleReminderTriggered);
+        ipcRenderer.on('mini-listen', handleMiniListen);
+        ipcRenderer.on('mini-stop', handleMiniStop);
+        ipcRenderer.on('app-settings-changed', handleAppSettings);
 
         return () => {
           ipcRenderer.removeListener('mobile-command', handleMobileCmd);
           ipcRenderer.removeListener('trigger-voice-listening', handleTriggerListening);
           ipcRenderer.removeListener('reminder-triggered', handleReminderTriggered);
+          ipcRenderer.removeListener('mini-listen', handleMiniListen);
+          ipcRenderer.removeListener('mini-stop', handleMiniStop);
+          ipcRenderer.removeListener('app-settings-changed', handleAppSettings);
         };
       } catch (e) {
         console.error('IPC Listener Error:', e);
       }
     }
-  }, [sendTextMessage, startListening]);
+  }, [sendTextMessage, startListening, stopListening, stopVoiceChat]);
+
+  // Background options owned by the main process (start with Windows, desktop mini menu)
+  useEffect(() => {
+    const r = (window as any).require?.('electron')?.ipcRenderer;
+    r?.invoke('get-app-settings').then((s: any) => s && setAppSettings(s)).catch(() => {});
+  }, []);
+
+  const updateAppSettings = async (patch: Partial<{ openAtLogin: boolean; miniBar: boolean }>) => {
+    setAppSettings(prev => ({ ...prev, ...patch }));
+    const r = (window as any).require?.('electron')?.ipcRenderer;
+    const s = await r?.invoke('set-app-settings', patch).catch(() => null);
+    if (s) setAppSettings(s);
+  };
+
+  // Mirror JARVIS's state to the desktop mini menu
+  useEffect(() => {
+    const r = (window as any).require?.('electron')?.ipcRenderer;
+    if (!r) return;
+    r.send('jarvis-state', {
+      status,
+      text: status === 'listening' ? liveTranscript : status === 'speaking' ? currentResponse : status === 'error' ? errorTitle() : notice,
+      wake: isAlwaysListening && !isMuted,
+      muted: isMuted,
+      language,
+    });
+    // errorTitle only depends on errorKind and language
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, liveTranscript, currentResponse, errorKind, notice, isAlwaysListening, isMuted, language]);
+
+  // Live level for the mini menu's waveform, at most ~12 times a second
+  const lastLevelSent = useRef(0);
+  useEffect(() => {
+    if (status !== 'listening' && status !== 'speaking') return;
+    const now = performance.now();
+    if (now - lastLevelSent.current < 80) return;
+    lastLevelSent.current = now;
+    (window as any).require?.('electron')?.ipcRenderer?.send('jarvis-level', audioLevel);
+  }, [audioLevel, status]);
 
   const openExternalLink = (url: string) => {
     if (typeof window !== 'undefined' && (window as any).require) {
@@ -617,7 +675,7 @@ export function App() {
             <button
               className={`tool-btn ${isAlwaysListening ? 'on' : ''}`}
               onClick={toggleAlwaysListening}
-              data-tip={isAlwaysListening ? t('Sürekli dinleme açık', 'Always listening on') : t('“Jarvis” ile uyandır', 'Wake with “Jarvis”')}
+              data-tip={isAlwaysListening ? t('“Hey Jarvis” açık', '“Hey Jarvis” on') : t('“Hey Jarvis” ile uyandır', 'Wake with “Hey Jarvis”')}
               aria-pressed={isAlwaysListening}
               aria-label={t('Sürekli dinleme', 'Always listening')}
             >
@@ -742,7 +800,7 @@ export function App() {
                 )}
               </motion.div>
               <div className="stage-hint" style={{ visibility: isAlwaysListening && status === 'idle' ? 'visible' : 'hidden' }}>
-                {t('Sürekli dinleme açık — “Jarvis” demeniz yeterli', 'Always listening — just say “Jarvis”')}
+                {t('“Hey Jarvis” demeniz yeterli', 'Just say “Hey Jarvis”')}
               </div>
             </div>
           </div>
@@ -998,6 +1056,37 @@ export function App() {
           </div>
         </div>
 
+        <div className="group-label" style={{ marginTop: 16 }}>{t('Arka Plan', 'Background')}</div>
+        <div className="group">
+          <div className="group-row">
+            <span>{t('“Hey Jarvis” ile uyandır', 'Wake with “Hey Jarvis”')}</span>
+            <Switch checked={isAlwaysListening} onChange={toggleAlwaysListening} label={t('“Hey Jarvis” ile uyandır', 'Wake with “Hey Jarvis”')} />
+          </div>
+          {isElectronApp && (
+            <>
+              <div className="group-row">
+                <span>{t('Bilgisayar açılınca başlat', 'Start with Windows')}</span>
+                <Switch
+                  checked={appSettings.openAtLogin}
+                  onChange={() => updateAppSettings({ openAtLogin: !appSettings.openAtLogin })}
+                  disabled={!appSettings.canAutoStart}
+                  label={t('Bilgisayar açılınca başlat', 'Start with Windows')}
+                />
+              </div>
+              <div className="group-row">
+                <span>{t('Masaüstü mini menü', 'Desktop mini menu')}</span>
+                <Switch checked={appSettings.miniBar} onChange={() => updateAppSettings({ miniBar: !appSettings.miniBar })} label={t('Masaüstü mini menü', 'Desktop mini menu')} />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="group-footnote">
+          {t(
+            'Pencereyi kapatınca JARVIS tepside çalışmaya devam eder; “Hey Jarvis” dediğinizde açılır. Arka planda yalnızca kısa konuşmalar uyanma kelimesi için Gemini’ye gönderilir.',
+            'Closing the window keeps JARVIS in the tray; say “Hey Jarvis” to bring it back. In the background only short utterances are sent to Gemini to check for the wake word.'
+          )}
+        </div>
+
         <div className="group-label" style={{ marginTop: 16 }}>{t('Ses', 'Voice')}</div>
         <div className="group">
           <div className="group-row">
@@ -1129,6 +1218,24 @@ function Segmented({ id, value, options, onChange }: { id: string; value: string
         </button>
       ))}
     </div>
+  );
+}
+
+const isElectronApp = typeof window !== 'undefined' && !!(window as any).require;
+
+function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: () => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      className={`switch ${checked ? 'on' : ''}`}
+      onClick={onChange}
+    >
+      <span className="switch-thumb" />
+    </button>
   );
 }
 

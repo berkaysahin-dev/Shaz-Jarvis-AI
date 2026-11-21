@@ -1,6 +1,7 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
+import MiniBar from './MiniBar.tsx'
 import './index.css'
 
 interface Props {
@@ -52,10 +53,14 @@ if (typeof window !== 'undefined' && /Electron/i.test(navigator.userAgent)) {
   document.documentElement.classList.add('is-electron');
 }
 
+// The desktop mini menu loads this same page with #mini
+const isMini = window.location.hash === '#mini';
+if (isMini) document.documentElement.classList.add('is-mini');
+
 ReactDOM.createRoot(document.getElementById('app')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      {isMini ? <MiniBar /> : <App />}
     </ErrorBoundary>
   </React.StrictMode>,
 )

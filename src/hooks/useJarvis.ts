@@ -8,6 +8,7 @@ export type JarvisStatus = 'idle' | 'listening' | 'processing' | 'speaking' | 'e
 export type JarvisLanguage = 'tr-TR' | 'en-US';
 export type VoiceEngine = 'gemini' | 'edge';
 export type JarvisErrorKind = GeminiErrorKind | 'mic' | 'key';
+type ListenMode = 'active' | 'followup' | 'passive';
 
 export interface Message {
   role: 'user' | 'model' | 'system';
@@ -227,7 +228,15 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   const [voiceEngine, setVoiceEngineState] = useState<VoiceEngine>(() => readPref<string>('jarvis_voice_engine', 'gemini') as VoiceEngine);
   const [geminiVoice, setGeminiVoiceState] = useState<string>(() => readPref<string>('jarvis_gemini_voice', 'Charon'));
   const [edgeVoice, setEdgeVoiceState] = useState<string>(() => readPref<string>('jarvis_edge_voice', 'tr-TR-AhmetNeural'));
-  const [isAlwaysListening, setIsAlwaysListening] = useState<boolean>(() => readPref<boolean>('jarvis_always_listening', false));
+  const [isAlwaysListening, setIsAlwaysListening] = useState<boolean>(() => {
+    // "Hey Jarvis" is on by default from this version; the toolbar button still turns it off
+    if (!localStorage.getItem('jarvis_wake_v2')) {
+      localStorage.setItem('jarvis_wake_v2', '1');
+      localStorage.setItem('jarvis_always_listening', 'true');
+      return true;
+    }
+    return readPref<boolean>('jarvis_always_listening', false);
+  });
 
   const persist = <T,>(key: string, setter: (v: T) => void) => (v: T) => { setter(v); localStorage.setItem(key, String(v)); };
   const setVoicePitch = persist<number>('jarvis_voice_pitch', setVoicePitchState);
@@ -248,7 +257,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   const historyRef = useRef<Content[]>([]);
   const geminiTtsPausedUntil = useRef(0);
   const noticeTimer = useRef<any>(null);
-  const startListeningRef = useRef<() => void>(() => {});
+  const startListeningRef = useRef<(mode?: ListenMode) => void>(() => {});
+  const passiveFailures = useRef(0);
 
   const updateStatus = useCallback((s: JarvisStatus) => {
     statusRef.current = s;
@@ -300,8 +310,9 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     setAudioLevel(0);
     updateStatus('idle');
     if (live.current.isAlwaysListening && !live.current.isMuted) {
+      // Keep the conversation going: a follow-up right after a reply needs no "Jarvis"
       setTimeout(() => {
-        if (session === sessionRef.current && statusRef.current === 'idle') startListeningRef.current();
+        if (session === sessionRef.current && statusRef.current === 'idle') startListeningRef.current('followup');
       }, 350);
     }
   }, [updateStatus]);
@@ -524,37 +535,54 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     return res.text.replace(/^["“]|["”]$/g, '').trim();
   };
 
-  const startListening = useCallback(async () => {
+  /**
+   * active   – the user tapped or pressed Alt+Space: chime, "Listening…", no wake word needed
+   * followup – right after JARVIS answered (hands-free mode): no chime, no wake word, short wait
+   * passive  – background wake-word loop: silent, status stays idle, only "Jarvis …" is answered
+   */
+  const startListening = useCallback(async (mode: ListenMode = 'active') => {
     const p = live.current;
+    const passive = mode === 'passive';
     if (!p.apiKey.trim()) {
-      showError('key', tr ? 'Önce Ayarlar’dan Gemini API anahtarınızı girin.' : 'Add your Gemini API key in Settings first.');
+      if (!passive) showError('key', tr ? 'Önce Ayarlar’dan Gemini API anahtarınızı girin.' : 'Add your Gemini API key in Settings first.');
       return;
     }
     if (p.isMuted) {
-      flashNotice(tr ? 'Mikrofon kapalı' : 'Microphone is muted');
+      if (!passive) flashNotice(tr ? 'Mikrofon kapalı' : 'Microphone is muted');
       return;
     }
 
     const session = haltAll();
-    clearError();
-    setLiveTranscript('');
-    updateStatus('listening');
-    playJarvisSound('start');
+    if (!passive) {
+      clearError();
+      setLiveTranscript('');
+      updateStatus('listening');
+      if (mode === 'active') playJarvisSound('start');
+    }
+
+    const backToWakeLoop = (delay = 0) => {
+      if (statusRef.current === 'listening' || statusRef.current === 'processing') updateStatus('idle');
+      if (!live.current.isAlwaysListening || live.current.isMuted) return;
+      setTimeout(() => {
+        if (session === sessionRef.current && statusRef.current === 'idle') startListeningRef.current('passive');
+      }, delay);
+    };
 
     const recorder = new MicRecorder();
     recorderRef.current = recorder;
     let result: RecordingEnd;
     try {
       result = await recorder.record({
-        onLevel: (l) => { if (session === sessionRef.current) setAudioLevel(l); },
-        endSilenceMs: 1300,
-        noSpeechTimeoutMs: p.isAlwaysListening ? 30000 : 8000,
-        maxDurationMs: 25000,
+        onLevel: (l) => { if (!passive && session === sessionRef.current) setAudioLevel(l); },
+        endSilenceMs: passive ? 900 : 1300,
+        noSpeechTimeoutMs: passive ? 30000 : mode === 'followup' ? 6000 : 8000,
+        maxDurationMs: passive ? 9000 : 25000,
       });
     } catch (e: any) {
       if (session !== sessionRef.current) return;
       const denied = e?.name === 'NotAllowedError' || e?.name === 'SecurityError';
       const missing = e?.name === 'NotFoundError' || e?.name === 'OverconstrainedError';
+      if (passive && !denied) { backToWakeLoop(5000); return; } // e.g. mic briefly busy
       showError('mic', denied
         ? (tr ? 'Mikrofon izni verilmedi. Windows Ayarlar › Gizlilik › Mikrofon’dan izin verin.' : 'Microphone access was denied.')
         : missing
@@ -569,23 +597,36 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     setAudioLevel(0);
 
     if (result.reason !== 'speech') {
-      if (live.current.isAlwaysListening && !live.current.isMuted) {
-        startListeningRef.current();
-      } else {
+      if (mode === 'active' && !live.current.isAlwaysListening) {
         updateStatus('idle');
         flashNotice(tr ? 'Ses algılanmadı' : 'Didn’t catch that');
+        return;
       }
+      backToWakeLoop();
       return;
     }
 
-    playJarvisSound('process');
-    updateStatus('processing');
+    // A wake phrase is short; long background talk (TV, a call) is never sent anywhere
+    if (passive && result.durationMs > 8500) { backToWakeLoop(); return; }
+
+    if (!passive) {
+      playJarvisSound('process');
+      updateStatus('processing');
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     let text = '';
     try {
       text = await transcribe(result.wavBase64, controller.signal);
+      passiveFailures.current = 0;
     } catch (e) {
+      if (session !== sessionRef.current) return;
+      if (passive && !(e instanceof GeminiError && (e.kind === 'auth' || e.kind === 'region'))) {
+        // Quiet retry with back-off instead of an error toast every few seconds
+        passiveFailures.current += 1;
+        backToWakeLoop(Math.min(60000, 3000 * passiveFailures.current));
+        return;
+      }
       handleFailure(e, session);
       return;
     } finally {
@@ -594,24 +635,29 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     if (session !== sessionRef.current) return;
 
     if (!text) {
-      if (live.current.isAlwaysListening) { startListeningRef.current(); return; }
-      updateStatus('idle');
-      flashNotice(tr ? 'Anlaşılır bir konuşma algılanmadı' : 'No clear speech detected');
+      if (mode === 'active' && !live.current.isAlwaysListening) {
+        updateStatus('idle');
+        flashNotice(tr ? 'Anlaşılır bir konuşma algılanmadı' : 'No clear speech detected');
+        return;
+      }
+      backToWakeLoop();
       return;
     }
 
-    if (isStopCommand(text)) { stopVoiceChat(); return; }
-
     const { woke, rest } = stripWakeWord(text);
-    if (live.current.isAlwaysListening) {
-      // In hands-free mode only requests addressed to JARVIS are answered
-      if (!woke) { startListeningRef.current(); return; }
+    if (passive) {
+      if (!woke) { backToWakeLoop(); return; }
+      // "Hey Jarvis": bring JARVIS up even if its window was closed to the tray
       focusAppWindow();
       playJarvisSound('wake');
     }
+
+    if (isStopCommand(text)) { stopVoiceChat(); backToWakeLoop(400); return; }
+
     if (woke && !rest) {
-      const reply = tr ? 'Dinliyorum efendim.' : 'Yes sir, I’m listening.';
+      const reply = tr ? 'Buyurun efendim.' : 'Yes, sir?';
       setConversation(prev => [...prev, { role: 'user', content: text }, { role: 'model', content: reply }]);
+      setCurrentResponse(reply);
       await speakText(reply, session);
       return;
     }
@@ -671,14 +717,16 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   }, []);
 
   const toggleMute = useCallback(() => {
-    setIsMuted(prev => {
-      const next = !prev;
-      if (next && statusRef.current === 'listening') {
-        haltAll();
-        updateStatus('idle');
-      }
-      return next;
-    });
+    const next = !live.current.isMuted;
+    live.current.isMuted = next;
+    setIsMuted(next);
+    if (next && (recorderRef.current || statusRef.current === 'listening')) {
+      haltAll();
+      updateStatus('idle');
+    }
+    if (!next && live.current.isAlwaysListening && statusRef.current === 'idle') {
+      setTimeout(() => startListeningRef.current('passive'), 200);
+    }
   }, [haltAll, updateStatus]);
 
   const toggleAlwaysListening = useCallback(() => {
@@ -686,9 +734,21 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     live.current.isAlwaysListening = next;
     setIsAlwaysListening(next);
     localStorage.setItem('jarvis_always_listening', String(next));
-    if (next && statusRef.current === 'idle') setTimeout(() => startListeningRef.current(), 200);
-    if (!next && statusRef.current === 'listening') { haltAll(); updateStatus('idle'); }
+    if (next && statusRef.current === 'idle') setTimeout(() => startListeningRef.current('passive'), 200);
+    if (!next && statusRef.current !== 'processing' && statusRef.current !== 'speaking' && (recorderRef.current || statusRef.current === 'listening')) {
+      haltAll();
+      updateStatus('idle');
+    }
   }, [haltAll, updateStatus]);
+
+  // Hands-free mode: start the background wake-word loop on launch and once a key is saved
+  useEffect(() => {
+    if (!isAlwaysListening || !apiKey.trim() || isMuted) return;
+    const t = setTimeout(() => {
+      if (statusRef.current === 'idle' && !recorderRef.current) startListeningRef.current('passive');
+    }, 800);
+    return () => clearTimeout(t);
+  }, [apiKey, isAlwaysListening, isMuted]);
 
   // Clean up the microphone and audio when the app unmounts
   useEffect(() => () => { haltAll(); }, [haltAll]);
