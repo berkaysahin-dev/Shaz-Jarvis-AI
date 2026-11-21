@@ -3,7 +3,18 @@ import { motion, AnimatePresence, MotionConfig, useSpring, useTransform } from '
 import { QRCodeSVG } from 'qrcode.react';
 import { Canvas } from '@react-three/fiber';
 import { Orb } from './components/Orb';
-import { useJarvis, type JarvisLanguage } from './hooks/useJarvis';
+import { useJarvis, GEMINI_VOICES, EDGE_VOICES, type JarvisLanguage, type VoiceEngine } from './hooks/useJarvis';
+
+// Viewport width, for the few layout decisions CSS can't make (animated panel width)
+function useViewportWidth() {
+  const [w, setW] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setW(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return w;
+}
 
 // Apple-style ring gauge (Activity / Batteries widget look)
 function levelColor(value: number) {
@@ -63,7 +74,12 @@ export function App() {
   const [showQR, setShowQR] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
-  const [showChat, setShowChat] = useState(true);
+  const [showChat, setShowChat] = useState(() => window.innerWidth >= 1100);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [connTest, setConnTest] = useState<{ state: 'idle' | 'testing' | 'ok' | 'fail'; message: string }>({ state: 'idle', message: '' });
+  const vw = useViewportWidth();
+  const isNarrow = vw < 860;
+  const isPhone = vw < 560;
   const [activeApp, setActiveApp] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ url: string; ip: string; port: number } | null>(null);
   const [textInput, setTextInput] = useState('');
@@ -89,6 +105,8 @@ export function App() {
     currentResponse,
     liveTranscript,
     errorMessage,
+    errorKind,
+    notice,
     isMuted,
     isAlwaysListening,
     toggleAlwaysListening,
@@ -96,6 +114,16 @@ export function App() {
     setVoicePitch,
     voiceRate,
     setVoiceRate,
+    voiceEngine,
+    setVoiceEngine,
+    geminiVoice,
+    setGeminiVoice,
+    edgeVoice,
+    setEdgeVoice,
+    previewVoice,
+    checkConnection,
+    clearConversation,
+    clearError,
     toggleMute,
     startListening,
     stopListening,
@@ -190,7 +218,9 @@ export function App() {
   };
 
   const handleSaveSettings = () => {
-    localStorage.setItem('jarvis_api_key', apiKey);
+    setApiKey(apiKey.trim());
+    setConnTest({ state: 'idle', message: '' });
+    localStorage.setItem('jarvis_api_key', apiKey.trim());
     localStorage.setItem('jarvis_language', language);
     setHasSavedKey(!!apiKey.trim());
     setShowSettings(false);
@@ -322,12 +352,50 @@ export function App() {
   };
 
   const handleOrbClick = () => {
-    if (status === 'listening') {
+    if (status === 'error' && (errorKind === 'key' || errorKind === 'auth')) {
+      clearError();
+      setShowSettings(true);
+    } else if (status === 'listening') {
       stopListening();
+    } else if (status === 'speaking' || status === 'processing') {
+      stopVoiceChat();
     } else {
       startListening();
     }
   };
+
+  const handleTestConnection = async () => {
+    setConnTest({ state: 'testing', message: '' });
+    const res = await checkConnection(apiKey);
+    setConnTest({ state: res.ok ? 'ok' : 'fail', message: res.message });
+  };
+
+  // Toast title that says what actually went wrong (it used to say "connection error" for everything)
+  const errorTitle = () => {
+    switch (errorKind) {
+      case 'auth':
+      case 'key': return t('API anahtarı sorunu', 'API key problem');
+      case 'quota': return t('Kota doldu', 'Quota reached');
+      case 'mic': return t('Mikrofon sorunu', 'Microphone problem');
+      case 'network': return t('İnternet yok', 'No internet');
+      case 'timeout': return t('Yanıt gecikti', 'Timed out');
+      case 'region': return t('Bölge desteklenmiyor', 'Region not supported');
+      case 'blocked': return t('Yanıt engellendi', 'Response blocked');
+      default: return t('Bir sorun oluştu', 'Something went wrong');
+    }
+  };
+
+  const handleErrorAction = () => {
+    if (errorKind === 'auth' || errorKind === 'key') {
+      clearError();
+      setShowSettings(true);
+    } else {
+      startListening();
+    }
+  };
+
+  // On narrow windows the sidebar is a drawer: close it after choosing something
+  const closeDrawer = () => { if (isNarrow) setShowSidebar(false); };
 
   const handleSendText = () => {
     if (textInput.trim()) {
@@ -338,6 +406,7 @@ export function App() {
 
   const handleAppLaunch = (appId: string, commandText: string) => {
     setActiveApp(appId);
+    closeDrawer();
     sendTextMessage(commandText);
   };
 
@@ -377,11 +446,13 @@ export function App() {
           : <span className="capsule-title">{t('Yanıtlıyor…', 'Responding…')}</span>;
       case 'error':
         return <>
-          <span className="capsule-title">{t('Bağlantı sorunu', 'Connection problem')}</span>
+          <span className="capsule-title">{errorTitle()}</span>
           <span className="capsule-caption">{t('Tekrar denemek için dokunun', 'Tap to try again')}</span>
         </>;
       default:
-        return <span className="capsule-title">{t('Konuşmak için dokunun', 'Tap to talk')}</span>;
+        return notice
+          ? <span className="capsule-title">{notice}</span>
+          : <span className="capsule-title">{t('Konuşmak için dokunun', 'Tap to talk')}</span>;
     }
   };
 
@@ -406,7 +477,8 @@ export function App() {
   const suggestions = [
     { icon: <Icon.note size={16} />, label: t('Bugünkü hedeflerimi not al', 'Take a note of today’s goals'), cmd: t('Bugünkü hedeflerimi not al', 'Take a note of my goals for today') },
     { icon: <Icon.clock size={16} />, label: t('10 dakika sonra su içmeyi hatırlat', 'Remind me to drink water in 10 min'), cmd: t('10 dakika sonra bana su içmeyi hatırlat', 'Remind me to drink water in 10 minutes') },
-    { icon: <Icon.music size={16} />, label: t('Spotify’da müzik başlat', 'Play music on Spotify'), cmd: t("Spotify'ı aç ve müziği başlat", 'Open Spotify and start the music') },
+    { icon: <Icon.music size={16} />, label: t('YouTube’da lo-fi müzik aç', 'Play lo-fi music on YouTube'), cmd: t("YouTube'da lo-fi müzik aç", 'Play lo-fi music on YouTube') },
+    { icon: <Icon.display size={16} />, label: t('Bilgisayarım nasıl?', 'How is my computer doing?'), cmd: t('Bilgisayarımın durumu nasıl?', 'How is my computer doing?') },
   ];
 
   const panelSpring = { type: 'spring', bounce: 0, duration: 0.42 } as const;
@@ -432,8 +504,22 @@ export function App() {
       </div>
 
       <div className="layout">
-        {/* Sidebar — macOS source list */}
-        <aside className="left-sidebar">
+        {/* Drawer backdrop on narrow windows */}
+        <AnimatePresence>
+          {isNarrow && showSidebar && (
+            <motion.div
+              className="drawer-backdrop"
+              onClick={() => setShowSidebar(false)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            />
+          )}
+        </AnimatePresence>
+
+        {/* Sidebar — macOS source list (a slide-in drawer on narrow windows) */}
+        <aside className={`left-sidebar ${showSidebar ? 'open' : ''}`} aria-hidden={isNarrow && !showSidebar}>
           <div className="sidebar-section-title">{t('Sistem', 'System')}</div>
           <div className="sys-widget">
             <Gauge
@@ -482,21 +568,25 @@ export function App() {
 
           <div className="sidebar-section-title">{t('Araçlar', 'Tools')}</div>
           <div className="nav-list">
-            <button className="nav-row" onClick={handleAnalyzeScreen}>
-              <span className="nav-icon plain"><Icon.display size={16} /></span>
+            <button className="nav-row tool" onClick={() => { closeDrawer(); handleAnalyzeScreen(); }}>
+              <span className="tool-icon blue"><ToolGlyph.display /></span>
               <span className="row-label">{t('Ekranı Analiz Et', 'Analyze Screen')}</span>
             </button>
-            <button className={`nav-row ${showCamera ? 'active' : ''}`} onClick={handleToggleCamera}>
-              <span className="nav-icon plain"><Icon.camera size={16} /></span>
+            <button className={`nav-row tool ${showCamera ? 'active' : ''}`} onClick={() => { closeDrawer(); handleToggleCamera(); }}>
+              <span className="tool-icon gray"><ToolGlyph.camera /></span>
               <span className="row-label">{t('Kamerayla Analiz', 'Camera Analysis')}</span>
             </button>
-            <button className={`nav-row ${showNotes ? 'active' : ''}`} onClick={handleLoadNotes}>
-              <span className="nav-icon plain"><Icon.note size={16} /></span>
+            <button className={`nav-row tool ${showNotes ? 'active' : ''}`} onClick={() => { closeDrawer(); handleLoadNotes(); }}>
+              <span className="tool-icon yellow"><ToolGlyph.note /></span>
               <span className="row-label">{t('Notlar', 'Notes')}</span>
             </button>
-            <button className={`nav-row ${showQR ? 'active' : ''}`} onClick={handleOpenQR}>
-              <span className="nav-icon plain"><Icon.phone size={16} /></span>
+            <button className={`nav-row tool ${showQR ? 'active' : ''}`} onClick={() => { closeDrawer(); handleOpenQR(); }}>
+              <span className="tool-icon green"><ToolGlyph.phone /></span>
               <span className="row-label">{t('Telefondan Bağlan', 'Connect Phone')}</span>
+            </button>
+            <button className="nav-row tool" onClick={() => { closeDrawer(); setShowSettings(true); }}>
+              <span className="tool-icon graphite"><ToolGlyph.gear /></span>
+              <span className="row-label">{t('Ayarlar', 'Settings')}</span>
             </button>
           </div>
 
@@ -510,6 +600,20 @@ export function App() {
         <main className="main-content">
           {/* Toolbar */}
           <div className="toolbar" role="toolbar">
+            {isNarrow && (
+              <>
+                <button
+                  className={`tool-btn ${showSidebar ? 'on' : ''}`}
+                  onClick={() => setShowSidebar(!showSidebar)}
+                  data-tip={t('Menü', 'Menu')}
+                  aria-pressed={showSidebar}
+                  aria-label={t('Menü', 'Menu')}
+                >
+                  <Icon.sidebar size={17} />
+                </button>
+                <span className="toolbar-divider" />
+              </>
+            )}
             <button
               className={`tool-btn ${isAlwaysListening ? 'on' : ''}`}
               onClick={toggleAlwaysListening}
@@ -562,10 +666,15 @@ export function App() {
               >
                 <span className="toast-icon"><Icon.alert size={16} /></span>
                 <span className="toast-text">
-                  <strong>{t('Bağlantı hatası', 'Connection error')}</strong>
-                  <span>{errorMessage}</span>
+                  <strong>{errorTitle()}</strong>
+                  <span title={errorMessage}>{errorMessage}</span>
                 </span>
-                <button className="btn btn-plain" onClick={startListening}>{t('Tekrar Dene', 'Try Again')}</button>
+                <button className="btn btn-plain" onClick={handleErrorAction}>
+                  {errorKind === 'auth' || errorKind === 'key' ? t('Ayarlar', 'Settings') : t('Tekrar Dene', 'Try Again')}
+                </button>
+                <button className="icon-btn toast-close" onClick={clearError} aria-label={t('Kapat', 'Dismiss')}>
+                  <Icon.close size={10} />
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
@@ -579,7 +688,8 @@ export function App() {
               onClick={handleOrbClick}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.96 }}
-              style={{ cursor: 'pointer', width: '380px', height: '380px', position: 'relative', zIndex: 2 }}
+              role="button"
+              aria-label={t('Konuş', 'Talk')}
             >
               <Canvas camera={{ position: [0, 0, 4.3], fov: 46 }}>
                 <ambientLight intensity={0.6} />
@@ -644,16 +754,23 @@ export function App() {
             <motion.div
               className="chat-shell"
               initial={{ width: 0 }}
-              animate={{ width: 340 }}
+              animate={{ width: isPhone ? vw : 340 }}
               exit={{ width: 0 }}
               transition={panelSpring}
             >
-              <aside className="chat-sidebar">
+              <aside className="chat-sidebar" style={{ width: isPhone ? vw : 340 }}>
                 <div className="chat-header">
                   <span className="chat-title">{t('Sohbet', 'Chat')}</span>
-                  <button className="icon-btn" onClick={() => setShowChat(false)} aria-label={t('Sohbeti kapat', 'Close chat')}>
-                    <Icon.close size={12} />
-                  </button>
+                  <div className="chat-header-actions">
+                    {conversation.length > 0 && (
+                      <button className="icon-btn" onClick={clearConversation} aria-label={t('Sohbeti temizle', 'Clear chat')} title={t('Sohbeti temizle', 'Clear chat')}>
+                        <Icon.trash size={12} />
+                      </button>
+                    )}
+                    <button className="icon-btn" onClick={() => setShowChat(false)} aria-label={t('Sohbeti kapat', 'Close chat')}>
+                      <Icon.close size={12} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="chat-messages">
@@ -676,6 +793,20 @@ export function App() {
                   )}
 
                   {conversation.map((msg, i) => {
+                    if (msg.role === 'system') {
+                      return (
+                        <motion.div
+                          key={i}
+                          className="chat-action"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ type: 'spring', bounce: 0, duration: 0.3 }}
+                        >
+                          <Icon.bolt size={11} />
+                          <span>{msg.content}</span>
+                        </motion.div>
+                      );
+                    }
                     const prev = conversation[i - 1];
                     const next = conversation[i + 1];
                     const runStart = !prev || prev.role !== msg.role;
@@ -836,12 +967,23 @@ export function App() {
             />
           </div>
         </div>
-        <div className="group-footnote">
-          {t('Anahtar yalnızca bu cihazda saklanır.', 'The key is stored only on this device.')}{' '}
-          <button className="link-btn" onClick={() => openExternalLink('https://aistudio.google.com/apikey')}>
-            {t('Anahtar al', 'Get a key')}
+        <div className="group-footnote conn-row">
+          <span>
+            {t('Anahtar yalnızca bu cihazda saklanır.', 'The key is stored only on this device.')}{' '}
+            <button className="link-btn" onClick={() => openExternalLink('https://aistudio.google.com/apikey')}>
+              {t('Anahtar al', 'Get a key')}
+            </button>
+          </span>
+          <button className="btn btn-secondary btn-sm" onClick={handleTestConnection} disabled={!apiKey.trim() || connTest.state === 'testing'}>
+            {connTest.state === 'testing' ? t('Deneniyor…', 'Testing…') : t('Bağlantıyı Test Et', 'Test Connection')}
           </button>
         </div>
+        {connTest.state !== 'idle' && connTest.state !== 'testing' && (
+          <div className={`conn-result ${connTest.state}`}>
+            {connTest.state === 'ok' ? <Icon.check size={13} /> : <Icon.alert size={13} />}
+            <span>{connTest.message}</span>
+          </div>
+        )}
 
         <div className="group-label" style={{ marginTop: 16 }}>{t('Genel', 'General')}</div>
         <div className="group">
@@ -858,6 +1000,38 @@ export function App() {
 
         <div className="group-label" style={{ marginTop: 16 }}>{t('Ses', 'Voice')}</div>
         <div className="group">
+          <div className="group-row">
+            <span>{t('Ses motoru', 'Voice engine')}</span>
+            <Segmented
+              id="engine"
+              value={voiceEngine}
+              onChange={(v) => setVoiceEngine(v as VoiceEngine)}
+              options={[{ value: 'gemini', label: t('Gemini HD', 'Gemini HD') }, { value: 'edge', label: t('Hızlı', 'Fast') }]}
+            />
+          </div>
+          <div className="group-row">
+            <span>{t('Ses', 'Voice')}</span>
+            <div className="voice-pick">
+              <select
+                className="select-field"
+                value={voiceEngine === 'gemini' ? geminiVoice : edgeVoice}
+                onChange={(e) => (voiceEngine === 'gemini' ? setGeminiVoice(e.target.value) : setEdgeVoice(e.target.value))}
+              >
+                {(voiceEngine === 'gemini' ? GEMINI_VOICES : EDGE_VOICES).map(v => (
+                  <option key={v.id} value={v.id}>{language === 'tr-TR' ? v.tr : v.en}</option>
+                ))}
+              </select>
+              <button
+                className="icon-btn"
+                onClick={() => previewVoice(voiceEngine, voiceEngine === 'gemini' ? geminiVoice : edgeVoice)}
+                aria-label={t('Sesi dinle', 'Preview voice')}
+                title={t('Sesi dinle', 'Preview voice')}
+                disabled={voiceEngine === 'gemini' && !apiKey.trim()}
+              >
+                <Icon.play size={11} />
+              </button>
+            </div>
+          </div>
           <div className="group-row stack">
             <div className="row-head">
               <span>{t('Ton', 'Pitch')}</span>
@@ -872,6 +1046,11 @@ export function App() {
             </div>
             <Slider min={0.5} max={1.5} step={0.05} value={voiceRate} onChange={setVoiceRate} />
           </div>
+        </div>
+        <div className="group-footnote">
+          {voiceEngine === 'gemini'
+            ? t('Gemini HD stüdyo kalitesinde, en doğal sestir. Kota dolarsa JARVIS otomatik olarak hızlı sese geçer.', 'Gemini HD is the most natural, studio-quality voice. If its quota runs out JARVIS switches to the fast voice automatically.')
+            : t('Hızlı ses, Microsoft nöral sesleriyle anında yanıt verir.', 'The fast voice answers instantly using Microsoft neural voices.')}
         </div>
 
         <div className="sheet-footer">
@@ -1013,6 +1192,43 @@ const Icon = {
   arrowUp: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.4}><path d="M12 19V5M6 11l6-6 6 6" /></svg>,
   arrowUpRight: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M7 17L17 7M8 7h9v9" /></svg>,
   trash: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2}><path d="M4 7h16M10 11v6M14 11v6M5.5 7l1 12a2 2 0 0 0 2 2h7a2 2 0 0 0 2-2l1-12M9 7V4.5h6V7" /></svg>,
+  sidebar: ({ size }: IconProps) => <svg {...svgProps(size)}><rect x="3" y="4.5" width="18" height="15" rx="3" /><path d="M9.5 4.5v15M5.5 8.5h2M5.5 11.5h2" /></svg>,
+  bolt: ({ size }: IconProps) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.5 2 4.8 13.2a.6.6 0 0 0 .5 1H11l-1.2 7.4c-.1.6.6.9 1 .4l8.6-11.2a.6.6 0 0 0-.5-1H13l1.5-7.3c.1-.6-.6-.9-1-.5z" /></svg>,
+  check: ({ size }: IconProps) => <svg {...svgProps(size)} strokeWidth={2.4}><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>,
+  play: ({ size }: IconProps) => <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 4.6v14.8a1 1 0 0 0 1.5.9l12-7.4a1 1 0 0 0 0-1.8l-12-7.4A1 1 0 0 0 7 4.6z" /></svg>,
+};
+
+/* System Settings–style tool icons: white filled glyph on a colored squircle tile.
+   Cut-outs use evenodd so the tile color shows through, like SF Symbols ".fill". */
+const glyph = { width: 16, height: 16, viewBox: '0 0 24 24', fill: '#fff', 'aria-hidden': true } as const;
+const ToolGlyph = {
+  display: () => (
+    <svg {...glyph}>
+      <path fillRule="evenodd" d="M4.5 3.5h15A2.5 2.5 0 0 1 22 6v9.5a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 15.5V6a2.5 2.5 0 0 1 2.5-2.5zm.5 2.5v9h14V6z" />
+      <path d="M8.5 20h7a.9.9 0 0 1 0 1.8h-7a.9.9 0 0 1 0-1.8z" />
+      <path d="M12 7.2l.75 1.75 1.75.75-1.75.75L12 12.2l-.75-1.75-1.75-.75 1.75-.75z" />
+    </svg>
+  ),
+  camera: () => (
+    <svg {...glyph}>
+      <path fillRule="evenodd" d="M9.2 3.5h5.6c.6 0 1.1.3 1.4.8l1 1.7h2.3A2.5 2.5 0 0 1 22 8.5v9a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17.5v-9A2.5 2.5 0 0 1 4.5 6h2.3l1-1.7c.3-.5.8-.8 1.4-.8zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0-1.8a2.2 2.2 0 1 1 0-4.4 2.2 2.2 0 0 1 0 4.4z" />
+    </svg>
+  ),
+  note: () => (
+    <svg {...glyph}>
+      <path fillRule="evenodd" d="M6 2.5h12A2.5 2.5 0 0 1 20.5 5v14a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 19V5A2.5 2.5 0 0 1 6 2.5zM7.5 8a.9.9 0 0 0 0 1.8h9a.9.9 0 0 0 0-1.8zm0 3.6a.9.9 0 0 0 0 1.8h9a.9.9 0 0 0 0-1.8zm0 3.6a.9.9 0 0 0 0 1.8h5.5a.9.9 0 0 0 0-1.8z" />
+    </svg>
+  ),
+  phone: () => (
+    <svg {...glyph}>
+      <path fillRule="evenodd" d="M8 1.5h8A2.5 2.5 0 0 1 18.5 4v16a2.5 2.5 0 0 1-2.5 2.5H8A2.5 2.5 0 0 1 5.5 20V4A2.5 2.5 0 0 1 8 1.5zm2 2.2a.6.6 0 0 0 0 1.2h4a.6.6 0 0 0 0-1.2zM12 20.6a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2z" />
+    </svg>
+  ),
+  gear: () => (
+    <svg {...glyph}>
+      <path fillRule="evenodd" d="M10.4 2h3.2l.5 2.6c.6.2 1.2.5 1.7.9l2.5-.9 1.6 2.8-2 1.7c.1.6.1 1.3 0 1.9l2 1.7-1.6 2.8-2.5-.9c-.5.4-1.1.7-1.7.9l-.5 2.6h-3.2l-.5-2.6c-.6-.2-1.2-.5-1.7-.9l-2.5.9-1.6-2.8 2-1.7a6 6 0 0 1 0-1.9l-2-1.7 1.6-2.8 2.5.9c.5-.4 1.1-.7 1.7-.9zM12 13.4a2.4 2.4 0 1 0 0-4.8 2.4 2.4 0 0 0 0 4.8z" transform="translate(0 1)" />
+    </svg>
+  ),
 };
 
 /* iOS-style app icons (squircle, full-bleed artwork) */
