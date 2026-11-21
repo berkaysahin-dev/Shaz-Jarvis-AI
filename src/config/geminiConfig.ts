@@ -1,12 +1,21 @@
 export const GEMINI_CONFIG = {
-  // Gemini 1.5 and 2.0 models are retired; keep this list on current stable models.
-  // Any other model the key can access is discovered at runtime and tried afterwards.
+  // Used only when the model list can't be fetched. Normally JARVIS asks the API which
+  // models this key can use and picks the newest fast "flash" model automatically,
+  // so retired model names no longer break the assistant.
   MODELS: [
+    'gemini-flash-latest',
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite',
-    'gemini-2.5-pro'
   ],
-  CHAT_MODEL: 'gemini-2.5-flash',
-  REQUEST_TIMEOUT_MS: 15000,
-  DISCOVERY_TIMEOUT_MS: 3500
+  TTS_MODELS: [
+    'gemini-2.5-flash-preview-tts',
+  ],
+  // One request may take this long before the next model is tried...
+  REQUEST_TIMEOUT_MS: 12000,
+  // ...but the whole answer must arrive within this, so "Thinking…" never hangs.
+  TOTAL_DEADLINE_MS: 25000,
+  TTS_TIMEOUT_MS: 15000,
+  DISCOVERY_TIMEOUT_MS: 4000,
+  // Messages of context sent with every request
+  HISTORY_TURNS: 12,
 };
