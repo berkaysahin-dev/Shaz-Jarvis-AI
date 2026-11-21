@@ -149,6 +149,7 @@ textarea {
 
 .titlebar-controls {
   -webkit-app-region: no-drag;
+  margin-left: auto;
   display: flex;
   gap: 2px;
 }
@@ -593,8 +594,11 @@ html.is-electron .left-sidebar {
 }
 
 .orb-container {
-  width: 380px;
-  height: 380px;
+  /* Scales with the window: full size on desktop, smaller on narrow or short windows */
+  --orb: clamp(200px, min(44vw, 50vh), 380px);
+  width: var(--orb);
+  height: var(--orb);
+  z-index: 2;
   position: relative;
   cursor: pointer;
   -webkit-app-region: no-drag;
@@ -610,8 +614,8 @@ html.is-electron .left-sidebar {
   top: 46%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 450px;
-  height: 450px;
+  width: calc(clamp(200px, min(44vw, 50vh), 380px) * 1.18);
+  height: calc(clamp(200px, min(44vw, 50vh), 380px) * 1.18);
   border-radius: 50%;
   border: 1px dashed rgba(0, 240, 255, 0.12);
   pointer-events: none;
@@ -1480,6 +1484,328 @@ html.is-electron .chat-sidebar {
   word-break: break-all;
   margin-top: 12px;
   user-select: text;
+}
+
+/* ==========================================================================
+   Tools — System Settings–style icon tiles
+   ========================================================================== */
+
+.nav-row.tool {
+  height: 34px;
+  gap: 10px;
+  padding: 0 6px;
+}
+
+.tool-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 6.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Top highlight + soft drop shadow, like macOS Settings icons */
+  box-shadow:
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -0.5px 0 rgba(0, 0, 0, 0.15),
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 0 0 0.5px rgba(0, 0, 0, 0.25);
+  transition: transform 160ms var(--ease-out);
+}
+
+.tool-icon svg {
+  filter: drop-shadow(0 0.5px 0.5px rgba(0, 0, 0, 0.18));
+}
+
+.nav-row.tool:active .tool-icon {
+  transform: scale(0.92);
+}
+
+.tool-icon.blue { background: linear-gradient(180deg, #47a6ff 0%, #0a7aff 100%); }
+.tool-icon.gray { background: linear-gradient(180deg, #a1a1a6 0%, #6e6e73 100%); }
+.tool-icon.yellow { background: linear-gradient(180deg, #ffd84d 0%, #f5b400 100%); }
+.tool-icon.green { background: linear-gradient(180deg, #4fdc6f 0%, #1fb141 100%); }
+.tool-icon.graphite { background: linear-gradient(180deg, #8e8e93 0%, #505055 100%); }
+
+/* ==========================================================================
+   New controls
+   ========================================================================== */
+
+.toast-close {
+  width: 22px;
+  height: 22px;
+}
+
+.chat-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.chat-action {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 92%;
+  margin: 6px 0 2px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--fill-4);
+  border: 0.5px solid var(--separator);
+  font-size: 11.5px;
+  color: var(--label-2);
+}
+
+.chat-action svg {
+  color: var(--orange);
+  flex-shrink: 0;
+}
+
+.chat-action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-sm {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.conn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.conn-result {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.conn-result.ok {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+
+.conn-result.fail {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
+
+.conn-result svg {
+  flex-shrink: 0;
+}
+
+.voice-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.select-field {
+  min-width: 0;
+  max-width: 220px;
+  height: 28px;
+  padding: 0 28px 0 10px;
+  border-radius: 7px;
+  border: 0.5px solid var(--hairline);
+  background: var(--fill-3) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23ebebf5' stroke-opacity='.6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 9l5-5 5 5M7 15l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 9px center;
+  color: var(--label);
+  font-size: 12.5px;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  cursor: pointer;
+}
+
+.select-field option {
+  background: #2c2c2e;
+  color: #fff;
+}
+
+.select-field:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 30%, transparent);
+}
+
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* ==========================================================================
+   Responsive layout
+   ========================================================================== */
+
+/* Medium windows: the chat floats over the stage instead of squeezing the orb */
+@media (max-width: 1099px) {
+  .chat-shell {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 140;
+    box-shadow: -18px 0 40px rgba(0, 0, 0, 0.35);
+  }
+
+  .chat-sidebar,
+  html.is-electron .chat-sidebar {
+    background: rgba(28, 28, 30, 0.9);
+  }
+}
+
+/* Narrow windows: the sidebar becomes a slide-in drawer */
+@media (max-width: 859px) {
+  .left-sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 130;
+    width: min(280px, 86vw);
+    transform: translateX(-104%);
+    transition: transform 360ms var(--ease-out);
+    box-shadow: 18px 0 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .left-sidebar,
+  html.is-electron .left-sidebar {
+    background: rgba(28, 28, 30, 0.94);
+  }
+
+  .left-sidebar.open {
+    transform: translateX(0);
+  }
+
+  .toolbar {
+    right: 12px;
+  }
+
+  .toolbar .tool-btn:first-child[data-tip]::after {
+    left: 0;
+    transform: translate(0, -2px);
+  }
+
+  .toolbar .tool-btn:first-child[data-tip]:hover::after {
+    transform: translate(0, 0);
+  }
+}
+
+/* Phone-sized windows */
+@media (max-width: 559px) {
+  .titlebar-title {
+    display: none;
+  }
+
+  .toolbar {
+    top: 42px;
+    right: 50%;
+    transform: translateX(50%);
+  }
+
+  .main-content {
+    padding-top: 56px;
+  }
+
+  .orb-container {
+    --orb: clamp(200px, min(78vw, 42vh), 330px);
+  }
+
+  .chat-sidebar,
+  html.is-electron .chat-sidebar {
+    background: rgba(24, 24, 26, 0.98);
+  }
+
+  .status-capsule {
+    max-width: calc(100vw - 24px);
+  }
+
+  .capsule-text {
+    max-width: calc(100vw - 120px);
+  }
+
+  .kbd,
+  .stage-hint {
+    display: none;
+  }
+
+  .toast {
+    top: 88px;
+    border-radius: var(--r-lg);
+    width: calc(100% - 24px);
+    max-width: calc(100% - 24px);
+  }
+
+  .toast-text {
+    flex: 1;
+  }
+
+  .toast-text {
+    flex-direction: column;
+    gap: 0;
+    white-space: normal;
+  }
+
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-content {
+    max-width: 100% !important;
+    max-height: calc(100vh - 48px);
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .sheet-footer {
+    flex-wrap: wrap;
+  }
+
+  .sheet-footer .btn {
+    flex: 1;
+  }
+
+  .group-row:not(.stack) {
+    flex-wrap: wrap;
+  }
+
+  .select-field {
+    max-width: 180px;
+  }
+
+  .chat-sidebar {
+    border-left: none;
+  }
+}
+
+/* Short windows: keep the orb and capsule on screen */
+@media (max-height: 620px) {
+  .ai-presence {
+    gap: 8px;
+  }
+
+  .orb-container {
+    --orb: clamp(180px, min(44vw, 46vh), 300px);
+  }
 }
 
 /* ==========================================================================
