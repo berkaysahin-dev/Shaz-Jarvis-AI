@@ -254,7 +254,7 @@ export async function testConnection(apiKey: string): Promise<string> {
    Text-to-speech
    -------------------------------------------------------------------------- */
 
-export async function synthesizeSpeech(apiKey: string, text: string, voice: string, style: string, signal?: AbortSignal): Promise<{ data: string; mimeType: string }> {
+export async function synthesizeSpeech(apiKey: string, text: string, voice: string, signal?: AbortSignal): Promise<{ data: string; mimeType: string }> {
   const models = await candidates(apiKey.trim(), 'tts');
   let lastError: GeminiError | null = null;
   for (const model of models) {
@@ -267,7 +267,7 @@ export async function synthesizeSpeech(apiKey: string, text: string, voice: stri
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey.trim() },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: `${style}\n\n${text}` }] }],
+          contents: [{ role: 'user', parts: [{ text }] }],
           generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
