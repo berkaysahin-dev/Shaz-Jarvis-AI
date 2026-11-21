@@ -450,7 +450,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   }, [showError, tr]);
 
   /** Sends one user turn (text and/or media) and speaks the answer. */
-  const runTurn = useCallback(async (parts: Part[], display: string, session: number) => {
+  const runTurn = useCallback(async (parts: Part[], display: string, session: number, opts: { tools?: boolean } = {}) => {
     const key = live.current.apiKey;
     if (!key.trim()) {
       showError('key', tr ? 'Önce Ayarlar’dan Gemini API anahtarınızı girin.' : 'Add your Gemini API key in Settings first.');
@@ -466,7 +466,13 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
       const system = await systemPrompt();
       const userContent: Content = { role: 'user', parts };
       const contents = [...historyRef.current, userContent];
-      const result = await generate({ apiKey: key, contents, system, tools: TOOLS, signal: controller.signal });
+      const result = await generate({
+        apiKey: key,
+        contents,
+        system,
+        tools: opts.tools === false ? undefined : TOOLS,
+        signal: controller.signal,
+      });
       if (session !== sessionRef.current) return;
 
       let reply = result.text;
@@ -683,12 +689,14 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     await runTurn([{ text: t }], t, session);
   }, [haltAll, runTurn, stopVoiceChat]);
 
-  const sendImageToGemini = useCallback(async (base64Image: string, promptText: string) => {
+  const sendImageToGemini = useCallback(async (base64Image: string, promptText: string, display?: string) => {
     const session = haltAll();
+    // Image questions only need a description, not computer actions: no tools keeps it fast
     await runTurn(
       [{ text: promptText || (tr ? 'Bu görüntüde ne var? Kısaca açıkla.' : 'What is in this image? Briefly explain.') }, { inline_data: { mime_type: 'image/jpeg', data: base64Image } }],
-      tr ? '📷 [Görüntü analizi]' : '📷 [Image analysis]',
+      display || (tr ? '📷 [Görüntü analizi]' : '📷 [Image analysis]'),
       session,
+      { tools: false },
     );
   }, [haltAll, runTurn, tr]);
 

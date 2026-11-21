@@ -3,7 +3,7 @@ import { motion, AnimatePresence, MotionConfig, useSpring, useTransform } from '
 import { QRCodeSVG } from 'qrcode.react';
 import { Canvas } from '@react-three/fiber';
 import { Orb } from './components/Orb';
-import { useJarvis, GEMINI_VOICES, EDGE_VOICES, type JarvisLanguage, type VoiceEngine } from './hooks/useJarvis';
+import { useJarvis, playJarvisSound, GEMINI_VOICES, EDGE_VOICES, type JarvisLanguage, type VoiceEngine } from './hooks/useJarvis';
 
 // Viewport width, for the few layout decisions CSS can't make (animated panel width)
 function useViewportWidth() {
@@ -367,7 +367,12 @@ export function App() {
         const dataUrl = await ipcRenderer.invoke('capture-screen');
         if (dataUrl) {
           const base64 = dataUrl.split(',')[1];
-          sendImageToGemini(base64, "Ekranımdaki bu anlık görüntüyü, kodları, görselleri ve yazıları Türkçe detaylıca incele ve çözüm sun.");
+          sendImageToGemini(base64, t(
+            'Bu, şu an bakmakta olduğum ekranın görüntüsü. Ne olduğunu en fazla 2-3 kısa cümleyle anlat; bir hata ya da sorun görüyorsan çözümünü söyle.',
+            'This is the screen I am looking at right now. Describe it in at most 2-3 short sentences; if you see an error or problem, say how to fix it.'
+          ), t('🖥️ [Ekran analizi]', '🖥️ [Screen analysis]'));
+        } else {
+          playJarvisSound('error');
         }
       } catch (e) {
         console.error('Screen capture error:', e);
@@ -527,6 +532,9 @@ export function App() {
   const formatMessage = (content: string) => {
     if (content.startsWith('🎤')) {
       return <span className="msg-meta"><Icon.mic size={14} /> {t('Sesli mesaj', 'Voice message')}</span>;
+    }
+    if (content.startsWith('🖥️')) {
+      return <span className="msg-meta"><Icon.display size={14} /> {t('Ekran analizi', 'Screen analysis')}</span>;
     }
     if (content.startsWith('📷')) {
       return <span className="msg-meta"><Icon.camera size={14} /> {t('Kamera görüntüsü', 'Camera image')}</span>;
