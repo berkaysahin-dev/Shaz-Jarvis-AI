@@ -342,12 +342,9 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
       // 1. Gemini HD voice
       if (engine === 'gemini' && p.apiKey && Date.now() > geminiTtsPausedUntil.current) {
         try {
-          const rateHint = p.voiceRate > 1.15 ? (tr ? ' Biraz hızlı konuş.' : ' Speak a little fast.') : p.voiceRate < 0.85 ? (tr ? ' Yavaş ve tane tane konuş.' : ' Speak slowly.') : '';
-          const style = tr
-            ? `Aşağıdaki metni sakin, kendinden emin, sıcak ve profesyonel bir yapay zekâ asistanı gibi, doğal Türkçe vurgu ve tonlamayla seslendir.${rateHint} Sadece metni oku:`
-            : `Read the following like a calm, confident, warm and refined AI butler, with natural intonation.${rateHint} Read only the text:`;
+          // Send only the reply text: the TTS model reads any style instruction aloud
           const voice = force?.engine === 'gemini' ? force.voice : p.geminiVoice;
-          const audio = await synthesizeSpeech(p.apiKey, clean, voice, style, controller.signal);
+          const audio = await synthesizeSpeech(p.apiKey, clean, voice, controller.signal);
           await play(base64ToBytes(audio.data), audio.mimeType);
           afterSpeaking(session);
           return;
