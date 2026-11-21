@@ -55,6 +55,11 @@
 - Chrome, Spotify, VS Code, Not Defteri, Hesap Makinesi gibi uygulamaları sesle veya modern listeden başlatma.
 - **Gerçek araç çağırma:** Uygulama ve klasör açma, Google / YouTube / Haritalar’da arama, müzik ve ses kontrolü, hatırlatıcı, not alma ve okuma, dosya bulma, bilgisayarı kilitleme ve sistem durumu.
 - **Hafıza:** Son konuşmaları ve sizin hakkınızda söylediğiniz kalıcı bilgileri hatırlar.
+
+### 8. Her Zaman Yanınızda: Masaüstü Mini Menü & "Hey Jarvis"
+- **Masaüstü mini menü:** Masaüstünün üstünde JARVIS’in durumunu, saati ve ekran analizi, mikrofon ve konuş tuşlarını gösteren küçük bir kapsül. İstediğiniz yere sürükleyebilirsiniz; konumunu hatırlar.
+- **"Hey Jarvis":** Pencereyi kapatınca JARVIS tepside çalışmaya devam eder. "Hey Jarvis" deyince açılır ve yanıt verir; ardından gelen sorular için tekrar "Jarvis" demeniz gerekmez.
+- **Bilgisayarla birlikte başlar:** Oturum açılınca JARVIS gizli başlar, uyanma kelimesi hemen çalışır. Hepsi Ayarlar › Arka Plan’dan veya tepsi simgesinden kapatılabilir.
 - Sol kenarda aktif uygulamayı gösteren parlayan **Cyan Aktif Göstergesi**.
 - QR Kod ile cep telefonundan bağlanıp komut gönderebilme.
 
