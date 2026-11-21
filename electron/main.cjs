@@ -173,9 +173,90 @@ function ensureMobileServer() {
   return mobileServerReady;
 }
 
+/* --------------------------------------------------------------------------
+   App settings that the main process needs before any page has loaded
+   -------------------------------------------------------------------------- */
+
+const fs = require('fs');
+const startHidden = process.argv.includes('--hidden');
+let appSettings = { openAtLogin: true, miniBar: true, hideNoticeShown: false };
+const settingsFile = () => path.join(app.getPath('userData'), 'jarvis_settings.json');
+
+function loadAppSettings() {
+  try { Object.assign(appSettings, JSON.parse(fs.readFileSync(settingsFile(), 'utf-8'))); } catch { /* first run */ }
+}
+
+function saveAppSettings() {
+  try { fs.writeFileSync(settingsFile(), JSON.stringify(appSettings, null, 2)); } catch (e) { console.warn('[Settings]', e.message); }
+}
+
+// Start with Windows (hidden in the tray) so "Hey Jarvis" works right after boot
+function applyLoginItem() {
+  if (!app.isPackaged) return; // dev runs would register electron.exe itself
+  // A portable build runs from a temp copy; register the exe the user actually has
+  const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
+  app.setLoginItemSettings({ openAtLogin: !!appSettings.openAtLogin, path: exe, args: ['--hidden'] });
+}
+
+/* --------------------------------------------------------------------------
+   Desktop mini menu: a small always-on-top pill at the top of the screen
+   -------------------------------------------------------------------------- */
+
+let miniWindow = null;
+let miniSize = { width: 300, height: 40 };
+let lastJarvisState = null;
+
+function placeMini() {
+  if (!miniWindow || miniWindow.isDestroyed()) return;
+  const { screen } = require('electron');
+  const wa = screen.getPrimaryDisplay().workArea;
+  miniWindow.setBounds({
+    x: Math.round(wa.x + (wa.width - miniSize.width) / 2),
+    y: wa.y + 6,
+    width: miniSize.width,
+    height: miniSize.height,
+  });
+}
+
+function createMiniBar() {
+  if (miniWindow && !miniWindow.isDestroyed()) return;
+  miniWindow = new BrowserWindow({
+    ...miniSize,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    alwaysOnTop: true,
+    focusable: false,
+    show: false,
+    backgroundColor: '#00000000',
+    webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false },
+  });
+  miniWindow.setAlwaysOnTop(true, 'floating');
+  if (isDev) miniWindow.loadURL('https://localhost:5173/#mini');
+  else miniWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'mini' });
+  miniWindow.webContents.on('did-finish-load', () => {
+    if (lastJarvisState) miniWindow.webContents.send('jarvis-state', lastJarvisState);
+  });
+  miniWindow.once('ready-to-show', () => { placeMini(); miniWindow.showInactive(); });
+  miniWindow.on('closed', () => { miniWindow = null; });
+}
+
+function destroyMiniBar() {
+  if (miniWindow && !miniWindow.isDestroyed()) miniWindow.destroy();
+  miniWindow = null;
+}
+
+let mainEverShown = false;
 function bringWindowToFront() {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainEverShown) { mainWindow.maximize(); mainEverShown = true; }
     mainWindow.show();
     mainWindow.setAlwaysOnTop(true);
     mainWindow.focus();
@@ -187,11 +268,13 @@ function bringWindowToFront() {
   }
 }
 
-function createTray() {
-  try {
-    const iconPath = path.join(__dirname, 'icon.ico');
-    tray = new Tray(iconPath);
-    const contextMenu = Menu.buildFromTemplate([
+function refreshTrayMenu() {
+  if (!tray) return;
+  tray.setContextMenu(Menu.buildFromTemplate(trayTemplate()));
+}
+
+function trayTemplate() {
+  return [
       {
         label: '🤖 JARVIS 2.0 Aç',
         click: () => bringWindowToFront()
@@ -203,6 +286,29 @@ function createTray() {
           if (mainWindow) mainWindow.webContents.send('trigger-voice-listening');
         }
       },
+      {
+        label: 'Masaüstü mini menü',
+        type: 'checkbox',
+        checked: !!appSettings.miniBar,
+        click: (item) => {
+          appSettings.miniBar = item.checked;
+          saveAppSettings();
+          if (item.checked) createMiniBar(); else destroyMiniBar();
+          if (mainWindow) mainWindow.webContents.send('app-settings-changed', appSettings);
+        }
+      },
+      {
+        label: 'Bilgisayar açılınca başlat',
+        type: 'checkbox',
+        checked: !!appSettings.openAtLogin,
+        enabled: app.isPackaged,
+        click: (item) => {
+          appSettings.openAtLogin = item.checked;
+          saveAppSettings();
+          applyLoginItem();
+          if (mainWindow) mainWindow.webContents.send('app-settings-changed', appSettings);
+        }
+      },
       { type: 'separator' },
       {
         label: 'Çıkış',
@@ -211,10 +317,14 @@ function createTray() {
           app.quit();
         }
       }
-    ]);
+  ];
+}
 
-    tray.setToolTip('JARVIS 2.0 — Arka Planda Dinlemede');
-    tray.setContextMenu(contextMenu);
+function createTray() {
+  try {
+    tray = new Tray(path.join(__dirname, 'icon.ico'));
+    tray.setToolTip('JARVIS — “Hey Jarvis” deyin');
+    refreshTrayMenu();
     tray.on('click', () => {
       bringWindowToFront();
     });
@@ -247,9 +357,31 @@ function createWindow() {
     },
     icon: path.join(__dirname, 'icon.ico'),
     titleBarStyle: 'hidden',
+    show: false,
   });
 
-  mainWindow.maximize();
+  // Started with Windows: stay in the tray and keep listening for "Hey Jarvis"
+  mainWindow.once('ready-to-show', () => {
+    if (!startHidden) bringWindowToFront();
+  });
+
+  // Closing the window keeps JARVIS running in the tray, so the wake word still works
+  mainWindow.on('close', (e) => {
+    if (app.isQuitting) return;
+    e.preventDefault();
+    mainWindow.hide();
+    if (!appSettings.hideNoticeShown) {
+      appSettings.hideNoticeShown = true;
+      saveAppSettings();
+      try {
+        const { Notification } = require('electron');
+        new Notification({
+          title: 'JARVIS arka planda çalışıyor',
+          body: '“Hey Jarvis” deyin ya da Alt+Space’e basın. Tamamen kapatmak için tepsi simgesinden Çıkış’ı seçin.',
+        }).show();
+      } catch { /* notifications unavailable */ }
+    }
+  });
 
   // Microphone/camera for our own UI only; everything else is refused
   const ses = mainWindow.webContents.session;
@@ -272,6 +404,50 @@ function createWindow() {
   });
   ipcMain.on('window-close', () => mainWindow.close());
   ipcMain.on('show-and-focus-window', () => bringWindowToFront());
+
+  // Status from the main page, mirrored by the desktop mini menu
+  ipcMain.on('jarvis-state', (_e, state) => {
+    lastJarvisState = state;
+    if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('jarvis-state', state);
+  });
+  ipcMain.on('jarvis-level', (_e, level) => {
+    if (miniWindow && !miniWindow.isDestroyed()) miniWindow.webContents.send('jarvis-level', level);
+  });
+  ipcMain.on('mini-action', (_e, action) => {
+    if (action === 'open') bringWindowToFront();
+    else if (action === 'listen' && mainWindow) mainWindow.webContents.send('mini-listen');
+    else if (action === 'stop' && mainWindow) mainWindow.webContents.send('mini-stop');
+    else if (action === 'hide') {
+      appSettings.miniBar = false;
+      saveAppSettings();
+      destroyMiniBar();
+      refreshTrayMenu();
+      if (mainWindow) mainWindow.webContents.send('app-settings-changed', appSettings);
+    }
+  });
+  ipcMain.on('mini-resize', (_e, size) => {
+    const w = Math.max(120, Math.min(640, Math.round(Number(size?.width) || 300)));
+    const h = Math.max(32, Math.min(160, Math.round(Number(size?.height) || 40)));
+    if (w === miniSize.width && h === miniSize.height) return;
+    miniSize = { width: w, height: h };
+    placeMini();
+  });
+
+  ipcMain.handle('get-app-settings', () => ({
+    openAtLogin: !!appSettings.openAtLogin,
+    miniBar: !!appSettings.miniBar,
+    canAutoStart: app.isPackaged,
+  }));
+  ipcMain.handle('set-app-settings', (_e, patch) => {
+    if (typeof patch?.openAtLogin === 'boolean') { appSettings.openAtLogin = patch.openAtLogin; applyLoginItem(); }
+    if (typeof patch?.miniBar === 'boolean') {
+      appSettings.miniBar = patch.miniBar;
+      if (patch.miniBar) createMiniBar(); else destroyMiniBar();
+    }
+    saveAppSettings();
+    refreshTrayMenu();
+    return { openAtLogin: !!appSettings.openAtLogin, miniBar: !!appSettings.miniBar, canAutoStart: app.isPackaged };
+  });
   ipcMain.handle('focus-app', () => {
     bringWindowToFront();
     return true;
@@ -581,17 +757,33 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+// One JARVIS at a time: starting it again (or at login) just shows the running one
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => bringWindowToFront());
+}
+
+app.on('before-quit', () => { app.isQuitting = true; });
+
+if (gotSingleInstanceLock) app.whenReady().then(() => {
+  loadAppSettings();
+  applyLoginItem();
   createWindow();
   createTray();
+  if (appSettings.miniBar) createMiniBar();
+
+  const { screen } = require('electron');
+  screen.on('display-metrics-changed', placeMini);
+  screen.on('display-added', placeMini);
+  screen.on('display-removed', placeMini);
 
   // Register Global Hotkey (Alt+Space)
   const { globalShortcut } = require('electron');
   globalShortcut.register('Alt+Space', () => {
     if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
+      bringWindowToFront();
       mainWindow.webContents.send('trigger-voice-listening');
     }
   });
