@@ -56,6 +56,11 @@
 - Launch applications such as Google Chrome, Spotify, VS Code, Notepad, and Calculator via voice commands or a streamlined quick-access panel.
 - **Real tool calling:** Gemini decides when to act: open apps and folders, search Google / YouTube / Maps, control media and volume, set reminders, take and read notes, find files, lock the PC and report system status.
 - **Memory & context:** JARVIS remembers the last turns of the conversation and lasting facts you tell it.
+
+### 8. Always There: Desktop Mini Menu & "Hey Jarvis"
+- **Desktop mini menu:** A small capsule floats over the desktop with JARVIS's status, the time and buttons for screen analysis, the microphone and talking. Drag it anywhere; it remembers its position.
+- **"Hey Jarvis":** Closing the window keeps JARVIS in the tray. Say "Hey Jarvis" and it opens and answers; follow-up questions need no wake word.
+- **Starts with Windows:** JARVIS starts hidden at login so the wake word works right away. All of this can be turned off in Settings › Background or from the tray icon.
 - **Cyan Active Indicator:** Glowing indicator along the left rail highlighting currently focused and active applications.
 - **Mobile Remote Connectivity:** Connect any smartphone on the local network via QR code to monitor status and dispatch voice/text commands remotely.
 

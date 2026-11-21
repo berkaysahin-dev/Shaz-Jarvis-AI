@@ -134,6 +134,8 @@ export function App() {
 
   const statusRef = useRef(status);
   statusRef.current = status;
+  // Latest handlers for the mini menu buttons (kept in a ref so the IPC listeners stay registered once)
+  const miniActions = useRef({ toggleMute: () => {}, analyzeScreen: () => {} });
   const [appSettings, setAppSettings] = useState({ openAtLogin: true, miniBar: true, canAutoStart: false });
 
   // Global Escape Key listener to stop voice chat & speech immediately
@@ -203,6 +205,8 @@ export function App() {
           else startListening();
         };
         const handleMiniStop = () => stopVoiceChat();
+        const handleMiniMute = () => miniActions.current.toggleMute();
+        const handleMiniScreen = () => miniActions.current.analyzeScreen();
         const handleAppSettings = (_event: any, s: any) => setAppSettings(prev => ({ ...prev, ...s }));
 
         ipcRenderer.on('mobile-command', handleMobileCmd);
@@ -210,6 +214,8 @@ export function App() {
         ipcRenderer.on('reminder-triggered', handleReminderTriggered);
         ipcRenderer.on('mini-listen', handleMiniListen);
         ipcRenderer.on('mini-stop', handleMiniStop);
+        ipcRenderer.on('mini-mute', handleMiniMute);
+        ipcRenderer.on('mini-screen', handleMiniScreen);
         ipcRenderer.on('app-settings-changed', handleAppSettings);
 
         return () => {
@@ -218,6 +224,8 @@ export function App() {
           ipcRenderer.removeListener('reminder-triggered', handleReminderTriggered);
           ipcRenderer.removeListener('mini-listen', handleMiniListen);
           ipcRenderer.removeListener('mini-stop', handleMiniStop);
+          ipcRenderer.removeListener('mini-mute', handleMiniMute);
+          ipcRenderer.removeListener('mini-screen', handleMiniScreen);
           ipcRenderer.removeListener('app-settings-changed', handleAppSettings);
         };
       } catch (e) {
@@ -366,6 +374,8 @@ export function App() {
       }
     }
   };
+
+  miniActions.current = { toggleMute, analyzeScreen: handleAnalyzeScreen };
 
   const handleMediaControl = async (action: string) => {
     if (typeof window !== 'undefined' && (window as any).require) {

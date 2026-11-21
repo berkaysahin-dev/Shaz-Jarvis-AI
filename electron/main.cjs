@@ -206,17 +206,22 @@ let miniWindow = null;
 let miniSize = { width: 300, height: 40 };
 let lastJarvisState = null;
 
+// The menu's position is kept as its top-center point, so it stays put while its width changes
 function placeMini() {
   if (!miniWindow || miniWindow.isDestroyed()) return;
   const { screen } = require('electron');
-  const wa = screen.getPrimaryDisplay().workArea;
-  miniWindow.setBounds({
-    x: Math.round(wa.x + (wa.width - miniSize.width) / 2),
-    y: wa.y + 6,
-    width: miniSize.width,
-    height: miniSize.height,
-  });
+  const saved = appSettings.miniPos;
+  const display = saved ? screen.getDisplayNearestPoint({ x: Math.round(saved.cx), y: Math.round(saved.y) }) : screen.getPrimaryDisplay();
+  const wa = display.workArea;
+  const cx = saved ? saved.cx : wa.x + wa.width / 2;
+  const top = saved ? saved.y : wa.y + 6;
+  // Keep it fully on screen (e.g. after a monitor was unplugged)
+  const x = Math.min(Math.max(wa.x, Math.round(cx - miniSize.width / 2)), wa.x + wa.width - miniSize.width);
+  const y = Math.min(Math.max(wa.y, Math.round(top)), wa.y + wa.height - miniSize.height);
+  miniWindow.setBounds({ x, y, width: miniSize.width, height: miniSize.height });
 }
+
+let miniWatchdog = null;
 
 function createMiniBar() {
   if (miniWindow && !miniWindow.isDestroyed()) return;
@@ -235,9 +240,23 @@ function createMiniBar() {
     focusable: false,
     show: false,
     backgroundColor: '#00000000',
-    webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false },
+    webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
   });
   miniWindow.setAlwaysOnTop(true, 'floating');
+  // Stay visible: "Show desktop" (Win+D) or another topmost window can hide or cover it
+  miniWindow.on('hide', () => setTimeout(() => {
+    if (appSettings.miniBar && miniWindow && !miniWindow.isDestroyed()) miniWindow.showInactive();
+  }, 300));
+  miniWindow.webContents.on('render-process-gone', () => {
+    destroyMiniBar();
+    if (appSettings.miniBar) setTimeout(createMiniBar, 1000);
+  });
+  clearInterval(miniWatchdog);
+  miniWatchdog = setInterval(() => {
+    if (!appSettings.miniBar || !miniWindow || miniWindow.isDestroyed()) return;
+    if (!miniWindow.isVisible()) miniWindow.showInactive();
+    miniWindow.setAlwaysOnTop(true, 'floating');
+  }, 3000);
   if (isDev) miniWindow.loadURL('https://localhost:5173/#mini');
   else miniWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'mini' });
   miniWindow.webContents.on('did-finish-load', () => {
@@ -248,6 +267,8 @@ function createMiniBar() {
 }
 
 function destroyMiniBar() {
+  clearInterval(miniWatchdog);
+  miniWatchdog = null;
   if (miniWindow && !miniWindow.isDestroyed()) miniWindow.destroy();
   miniWindow = null;
 }
@@ -296,6 +317,11 @@ function trayTemplate() {
           if (item.checked) createMiniBar(); else destroyMiniBar();
           if (mainWindow) mainWindow.webContents.send('app-settings-changed', appSettings);
         }
+      },
+      {
+        label: 'Mini menüyü ortaya al',
+        enabled: !!appSettings.miniBar,
+        click: () => { delete appSettings.miniPos; saveAppSettings(); placeMini(); }
       },
       {
         label: 'Bilgisayar açılınca başlat',
@@ -353,7 +379,10 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       webSecurity: false,
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      // The window is often hidden (tray, "Hey Jarvis", mini menu): audio must start
+      // without a click inside it, or the mic and voice stay silently suspended
+      autoplayPolicy: 'no-user-gesture-required',
     },
     icon: path.join(__dirname, 'icon.ico'),
     titleBarStyle: 'hidden',
@@ -417,7 +446,13 @@ function createWindow() {
     if (action === 'open') bringWindowToFront();
     else if (action === 'listen' && mainWindow) mainWindow.webContents.send('mini-listen');
     else if (action === 'stop' && mainWindow) mainWindow.webContents.send('mini-stop');
-    else if (action === 'hide') {
+    else if (action === 'mute' && mainWindow) mainWindow.webContents.send('mini-mute');
+    else if (action === 'screen' && mainWindow) mainWindow.webContents.send('mini-screen');
+    else if (action === 'center') {
+      delete appSettings.miniPos;
+      saveAppSettings();
+      placeMini();
+    } else if (action === 'hide') {
       appSettings.miniBar = false;
       saveAppSettings();
       destroyMiniBar();
@@ -425,6 +460,22 @@ function createWindow() {
       if (mainWindow) mainWindow.webContents.send('app-settings-changed', appSettings);
     }
   });
+  // Dragging the mini menu: the page sends how far the pointer moved since the last event
+  ipcMain.on('mini-move', (_e, d) => {
+    if (!miniWindow || miniWindow.isDestroyed()) return;
+    const dx = Math.round(Number(d?.dx) || 0);
+    const dy = Math.round(Number(d?.dy) || 0);
+    const b = miniWindow.getBounds();
+    miniWindow.setBounds({ x: b.x + dx, y: b.y + dy, width: b.width, height: b.height });
+  });
+  ipcMain.on('mini-move-end', () => {
+    if (!miniWindow || miniWindow.isDestroyed()) return;
+    const b = miniWindow.getBounds();
+    appSettings.miniPos = { cx: b.x + b.width / 2, y: b.y };
+    saveAppSettings();
+    placeMini(); // snaps back inside the screen if dropped partly off it
+  });
+
   ipcMain.on('mini-resize', (_e, size) => {
     const w = Math.max(120, Math.min(640, Math.round(Number(size?.width) || 300)));
     const h = Math.max(32, Math.min(160, Math.round(Number(size?.height) || 40)));

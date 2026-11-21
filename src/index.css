@@ -2036,6 +2036,42 @@ html.is-mini #app {
   color: #fff;
 }
 
+.mini-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.mini-btn.talk:not(.stop) {
+  background: var(--blue);
+  color: #fff;
+}
+
+.mini-btn.talk:not(.stop):hover {
+  background: #2b95ff;
+}
+
+.mini-btn.muted {
+  background: color-mix(in srgb, var(--red) 24%, transparent);
+  color: var(--red);
+}
+
+.mini-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
+}
+
+.mini-pill.dragging {
+  cursor: grabbing;
+  background: rgba(28, 28, 30, 0.95);
+}
+
+.mini-pill.dragging .mini-btn {
+  pointer-events: none;
+}
+
 /* ==========================================================================
    Accessibility
    ========================================================================== */
