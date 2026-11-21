@@ -753,17 +753,30 @@ function createWindow() {
     };
   });
 
+  // Screenshot of what the user is looking at: the monitor under the mouse, with JARVIS's
+  // own windows left out (excluded from capture, so the page behind them is what's seen).
   ipcMain.handle('capture-screen', async () => {
-    const { desktopCapturer } = require('electron');
+    const { desktopCapturer, screen } = require('electron');
+    const ours = [mainWindow, miniWindow].filter(w => w && !w.isDestroyed() && w.isVisible());
     try {
-      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1280, height: 720 } });
-      if (sources.length > 0) {
-        return sources[0].thumbnail.toDataURL();
-      }
-    } catch(e) {
+      ours.forEach(w => w.setContentProtection(true));
+      await new Promise(r => setTimeout(r, 120)); // let the compositor apply the exclusion
+
+      const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+      // ~1600 px wide is plenty for reading text and much faster to send than full 4K
+      const scale = Math.min(1, 1600 / (display.size.width * display.scaleFactor)) * display.scaleFactor;
+      const thumbnailSize = { width: Math.round(display.size.width * scale), height: Math.round(display.size.height * scale) };
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize });
+      const source = sources.find(s => String(s.display_id) === String(display.id)) || sources[0];
+      if (!source || source.thumbnail.isEmpty()) return null;
+      // JPEG is ~5–10× smaller than PNG, so the upload to Gemini is quick
+      return `data:image/jpeg;base64,${source.thumbnail.toJPEG(82).toString('base64')}`;
+    } catch (e) {
       console.error('Screen capture error:', e);
+      return null;
+    } finally {
+      ours.forEach(w => { if (!w.isDestroyed()) w.setContentProtection(false); });
     }
-    return null;
   });
 
   ipcMain.handle('synthesize-speech', async (_event, { text, voice, rate, pitch }) => {
