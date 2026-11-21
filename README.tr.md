@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Electron-43.4-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" />
   <img src="https://img.shields.io/badge/Three.js-0.185-000000?style=for-the-badge&logo=three.js&logoColor=white" alt="Three.js" />
-  <img src="https://img.shields.io/badge/Google_Gemini-2.0_Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" />
+  <img src="https://img.shields.io/badge/Google_Gemini-Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" />
   <img src="https://img.shields.io/badge/Edge_Neural_TTS-tr--TR--Ahmet-0078D7?style=for-the-badge&logo=microsoft&logoColor=white" alt="Edge Neural TTS" />
 </p>
 ---
@@ -29,14 +29,17 @@
 - **360° Dairesel Ses Ekolayzerı:** Ses giriş ve çıkışına göre dinamik uzayıp kısalan 64 adet 3D radyal spektrum çubuğu.
 - **1200+ Kuantum Parçacık Sarmalı:** Organik sıvı plazma çekirdek etrafında dönen parçacık bulutu.
 
-### 2. Stüdyo Kalitesinde Doğal İnsan Sesi (Neural TTS)
-- **Doğal Türkçe Tonlama:** Standart robotik sesler yerine insansı tonlamalara, nefes aralıklarına sahip **Neural Türkçe Asistan Sesi** (`tr-TR-AhmetNeural`).
+### 2. Stüdyo Kalitesinde Ses (Gemini HD + Neural yedek)
+- **Gemini HD ses:** Yanıtlar Gemini metin-okuma sesleriyle (Charon, Orus, Kore ve diğerleri) doğal, stüdyo kalitesinde Türkçe seslendirilir.
+- **Otomatik yedek:** HD ses kullanılamazsa veya kotası dolarsa JARVIS Microsoft nöral seslerine (96 kbps, ton ve hız ayarlı), o da olmazsa sistem sesine geçer.
+- **Ses seçici:** Ayarlar’dan motoru ve sesi seçip kaydetmeden önce dinleyebilirsiniz.
 - **Canlı 3D Küre Senkronizasyonu:** Çalınan ses Web Audio Analyser ile 3D küreye bağlanır; JARVIS konuşurken küre ritmik olarak dalgalanır.
 
-### 3. Ultra Düşük Gecikmeli Ses Algılama (Sub-300ms)
-- **Canlı Akışlı STT:** Konuştuğunuz kelimeler ağzınızdan çıktığı an algılanır.
-- **Hızlı VAD (Ses Aktivite Dedektörü):** Cümleniz bittikten yalnızca **380 milisaniye** sonra komut Gemini'ye iletilir.
-- **Düşünme Gecikmesiz Yanıt:** `gemini-2.0-flash` motoru sayesinde anında tek ve net cümlelik Türkçe yanıt üretilir.
+### 3. Güvenilir Sesli Komut
+- **Doğrudan mikrofon kaydı:** Yankı ve gürültü engellemeyle kayıt alır, cümlenin bittiğini kendisi anlar; dinleme artık kendiliğinden kapanmaz.
+- **Doğru yazıya dökme:** Konuşmanız Gemini ile yazıya çevrilir ve sohbette görünür; JARVIS’in ne duyduğunu görürsünüz.
+- **Otomatik model seçimi:** Anahtarınızın erişebildiği en yeni hızlı Flash modelini kendisi seçer; eskiyen model adları uygulamayı bozmaz.
+- **Anlaşılır hatalar:** Geçersiz anahtar, dolan kota, bulunamayan mikrofon veya internet kesintisi için ayrı ayrı mesaj gösterir.
 
 ### ⏹ 4. Anında Sesli Sohbeti Durdurma & Araya Girme (Interrupt)
 - Konuşurken veya dinlerken *"dur"*, *"sus"*, *"jarvis dur"*, *"sohbeti durdur"*, *"iptal"* dediğinizde veya klavyeden `Escape` tuşuna / arayüzdeki **[DURDUR]** butonuna bastığınızda ses ve işlem anında kesilir.
@@ -50,6 +53,8 @@
 
 ### 7. Akıllı Uygulama Kontrolü & Mobil Uzaktan Erişim
 - Chrome, Spotify, VS Code, Not Defteri, Hesap Makinesi gibi uygulamaları sesle veya modern listeden başlatma.
+- **Gerçek araç çağırma:** Uygulama ve klasör açma, Google / YouTube / Haritalar’da arama, müzik ve ses kontrolü, hatırlatıcı, not alma ve okuma, dosya bulma, bilgisayarı kilitleme ve sistem durumu.
+- **Hafıza:** Son konuşmaları ve sizin hakkınızda söylediğiniz kalıcı bilgileri hatırlar.
 - Sol kenarda aktif uygulamayı gösteren parlayan **Cyan Aktif Göstergesi**.
 - QR Kod ile cep telefonundan bağlanıp komut gönderebilme.
 
@@ -62,8 +67,8 @@
 | **Masaüstü Motoru** | Electron 43 (Windows Native) |
 | **Önyüz UI** | React 19 (TypeScript) + Vite 8 |
 | **3D Rendering** | Three.js + React Three Fiber + Drei |
-| **Yapay Zeka Modelleri** | Google Gemini REST (`gemini-2.0-flash`, `gemini-2.5-flash`) |
-| **Ses Sentezi** | Microsoft Edge Neural TTS (`tr-TR-AhmetNeural`) |
+| **Yapay Zeka Modelleri** | Google Gemini REST (en yeni Flash modeli, otomatik seçilir) |
+| **Ses Sentezi** | Gemini TTS (HD) + Microsoft Edge Neural TTS yedek |
 | **Tipografi** | Plus Jakarta Sans & JetBrains Mono |
 
 ---

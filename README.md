@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/Electron-43.4-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" />
   <img src="https://img.shields.io/badge/Three.js-0.185-000000?style=for-the-badge&logo=three.js&logoColor=white" alt="Three.js" />
-  <img src="https://img.shields.io/badge/Google_Gemini-2.0_Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" />
+  <img src="https://img.shields.io/badge/Google_Gemini-Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" />
   <img src="https://img.shields.io/badge/Edge_Neural_TTS-tr--TR--Ahmet-0078D7?style=for-the-badge&logo=microsoft&logoColor=white" alt="Edge Neural TTS" />
 </p>
 
@@ -30,14 +30,17 @@
 - **360° Circular Audio Equalizer:** 64 radial 3D spectrum bars that dynamically scale and pulse with real-time audio input and output.
 - **1,200+ Quantum Particle Swarm:** An organic particle cloud revolving around a pulsating fluid plasma core.
 
-### 2. Studio-Quality Natural Human Voice (Neural TTS)
-- **Natural Speech & Cadence:** Powered by **Microsoft Edge Neural Voice** (`tr-TR-AhmetNeural`), providing human-like inflection, expressive cadence, and natural breathing intervals instead of robotic synthesis.
+### 2. Studio-Quality Voice (Gemini HD + Neural fallback)
+- **Gemini HD voice:** Replies are spoken with Gemini text-to-speech voices (Charon, Orus, Kore and more) for natural, studio-quality Turkish and English.
+- **Automatic fallback:** If the HD voice is unavailable or its quota runs out, JARVIS switches to Microsoft neural voices (96 kbps, pitch and speed controls), then to the system voice.
+- **Voice picker:** Choose the engine and voice in Settings and preview it before saving.
 - **Live 3D Sphere Synchronization:** Real-time audio stream linked directly to the 3D core via the Web Audio Analyser API; the sphere ripples and pulses rhythmically as JARVIS speaks.
 
-### 3. Ultra-Low Latency Speech Detection (Sub-300ms)
-- **Live Streaming STT:** Transcribes words instantly as they are spoken.
-- **High-Speed VAD (Voice Activity Detector):** Dispatches user input to Gemini in just **380 milliseconds** after speech stops.
-- **Zero-Latency Reasoning:** Powered by Google's `gemini-2.0-flash` engine to deliver immediate, concise, single-sentence responses in real time.
+### 3. Reliable Voice Input
+- **Direct microphone capture:** Records with echo cancellation and noise suppression and detects the end of a sentence automatically, so listening no longer stops by itself.
+- **Accurate transcription:** Speech is transcribed by Gemini and shown in the chat, so you see what JARVIS heard.
+- **Automatic model selection:** JARVIS asks the API which models your key can use and picks the newest fast Flash model, so retired model names don't break it.
+- **Clear errors:** An invalid key, exhausted quota, missing microphone or lost internet each get their own message instead of a generic connection error.
 
 ### ⏹ 4. Instant Interrupt & Conversational Barge-In
 - Cut off voice output and ongoing tasks immediately by saying commands like *"stop"*, *"quiet"*, *"jarvis stop"*, or *"cancel"*, or by pressing the `Escape` key / clicking the **[STOP]** button in the UI.
@@ -51,6 +54,8 @@
 
 ### 7. Smart Application Control & Mobile Remote Access
 - Launch applications such as Google Chrome, Spotify, VS Code, Notepad, and Calculator via voice commands or a streamlined quick-access panel.
+- **Real tool calling:** Gemini decides when to act: open apps and folders, search Google / YouTube / Maps, control media and volume, set reminders, take and read notes, find files, lock the PC and report system status.
+- **Memory & context:** JARVIS remembers the last turns of the conversation and lasting facts you tell it.
 - **Cyan Active Indicator:** Glowing indicator along the left rail highlighting currently focused and active applications.
 - **Mobile Remote Connectivity:** Connect any smartphone on the local network via QR code to monitor status and dispatch voice/text commands remotely.
 
@@ -63,8 +68,8 @@
 | **Desktop Shell** | Electron 43 (Windows Native) |
 | **Frontend UI** | React 19 (TypeScript) + Vite 8 |
 | **3D Graphics & Shaders** | Three.js + React Three Fiber + Drei |
-| **AI Engine** | Google Gemini REST (`gemini-2.0-flash`, `gemini-2.5-flash`) |
-| **Speech Synthesis** | Microsoft Edge Neural TTS (`tr-TR-AhmetNeural`) |
+| **AI Engine** | Google Gemini REST (newest Flash model, chosen automatically) |
+| **Speech Synthesis** | Gemini TTS (HD) + Microsoft Edge Neural TTS fallback |
 | **Typography** | Plus Jakarta Sans & JetBrains Mono |
 
 ---
