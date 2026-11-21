@@ -237,7 +237,9 @@ function createMiniBar() {
     skipTaskbar: true,
     hasShadow: false,
     alwaysOnTop: true,
-    focusable: false,
+    // Must be focusable: Windows drops clicks and drags on a non-activatable window
+    // while another app is in front (the buttons only worked over the bare desktop)
+    focusable: true,
     show: false,
     backgroundColor: '#00000000',
     webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false, autoplayPolicy: 'no-user-gesture-required' },
