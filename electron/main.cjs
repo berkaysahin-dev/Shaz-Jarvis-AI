@@ -195,8 +195,60 @@ function applyLoginItem() {
   if (!app.isPackaged) return; // dev runs would register electron.exe itself
   // A portable build runs from a temp copy; register the exe the user actually has
   const exe = process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
-  app.setLoginItemSettings({ openAtLogin: !!appSettings.openAtLogin, path: exe, args: ['--hidden'] });
+  const on = !!appSettings.openAtLogin;
+  app.setLoginItemSettings({ openAtLogin: on, path: exe, args: ['--hidden'] });
+  // Windows skipped the registry Run entry at logon on some PCs, so also place a shortcut in
+  // the Startup folder, which is honoured reliably. A second copy started by both just exits.
+  try {
+    const { shell } = require('electron');
+    const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'JARVIS.lnk');
+    if (on) {
+      shell.writeShortcutLink(lnk, 'create', {
+        target: exe,
+        args: '--hidden',
+        cwd: path.dirname(exe),
+        description: 'JARVIS',
+        icon: exe,
+        iconIndex: 0,
+      });
+    } else if (fs.existsSync(lnk)) {
+      fs.unlinkSync(lnk);
+    }
+  } catch (e) {
+    console.warn('[Startup shortcut]', e.message);
+  }
 }
+
+// Launch commands for known apps. Fixed strings only: never pass free-form
+// (AI-, remote- or settings-provided) text to the shell.
+const APP_COMMANDS = [
+  { keys: ['youtube'], cmd: 'start https://www.youtube.com', label: 'YouTube' },
+  { keys: ['brave'], cmd: 'start "" brave', label: 'Brave' },
+  { keys: ['edge', 'msedge'], cmd: 'start "" msedge', label: 'Microsoft Edge' },
+  { keys: ['firefox'], cmd: 'start "" firefox', label: 'Firefox' },
+  { keys: ['operagx', 'opera'], cmd: 'start "" opera', label: 'Opera GX' },
+  { keys: ['chrome'], cmd: 'start "" chrome', label: 'Google Chrome' },
+  { keys: ['tarayıcı', 'browser', 'google', 'internet'], cmd: 'start https://www.google.com', label: 'Tarayıcı' },
+  { keys: ['spotify'], cmd: 'start spotify:', label: 'Spotify' },
+  { keys: ['discord'], cmd: 'start discord:', label: 'Discord' },
+  { keys: ['steam'], cmd: 'start steam:', label: 'Steam' },
+  { keys: ['whatsapp'], cmd: 'start whatsapp:', label: 'WhatsApp' },
+  { keys: ['telegram'], cmd: 'start tg:', label: 'Telegram' },
+  { keys: ['vscode', 'code'], cmd: 'code', label: 'VS Code' },
+  { keys: ['notepad', 'not defteri'], cmd: 'start notepad', label: 'Not Defteri' },
+  { keys: ['calc', 'hesap makinesi'], cmd: 'start calc', label: 'Hesap Makinesi' },
+  { keys: ['downloads', 'download', 'indirilen'], cmd: 'explorer "%userprofile%\\Downloads"', label: 'İndirilenler' },
+  { keys: ['desktop', 'masaüstü'], cmd: 'explorer "%userprofile%\\Desktop"', label: 'Masaüstü' },
+  { keys: ['documents', 'belge'], cmd: 'explorer "%userprofile%\\Documents"', label: 'Belgeler' },
+  { keys: ['explorer', 'dosya gezgini'], cmd: 'explorer', label: 'Dosya Gezgini' },
+  { keys: ['settings', 'ayarlar'], cmd: 'start ms-settings:', label: 'Ayarlar' },
+  { keys: ['task_manager', 'görev yöneticisi'], cmd: 'start taskmgr', label: 'Görev Yöneticisi' },
+  { keys: ['paint'], cmd: 'start mspaint', label: 'Paint' },
+  { keys: ['terminal'], cmd: 'start wt || start cmd', label: 'Terminal' },
+  { keys: ['camera_app', 'kamera'], cmd: 'start microsoft.windows.camera:', label: 'Kamera' },
+  { keys: ['mail', 'posta'], cmd: 'start outlookmail:', label: 'Posta' },
+  { keys: ['calendar', 'takvim'], cmd: 'start outlookcal:', label: 'Takvim' },
+];
 
 /* --------------------------------------------------------------------------
    Desktop mini menu: a small always-on-top pill at the top of the screen
@@ -486,6 +538,20 @@ function createWindow() {
     placeMini();
   });
 
+  // File picker for "open a program or file" custom commands
+  ipcMain.handle('pick-file', async () => {
+    const { dialog } = require('electron');
+    const res = await dialog.showOpenDialog(mainWindow, {
+      title: 'Açılacak program veya dosyayı seçin',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Programlar ve kısayollar', extensions: ['exe', 'lnk', 'url', 'bat', 'cmd'] },
+        { name: 'Tüm dosyalar', extensions: ['*'] },
+      ],
+    });
+    return res.canceled ? null : res.filePaths[0] || null;
+  });
+
   ipcMain.handle('get-app-settings', () => ({
     openAtLogin: !!appSettings.openAtLogin,
     miniBar: !!appSettings.miniBar,
@@ -527,29 +593,39 @@ function createWindow() {
 
     console.log(`[Electron Tool] Executing ${name} with args:`, args);
 
+    // Custom commands from Settings map onto the tools below
+    if (name === 'routine_action') {
+      const { shell } = require('electron');
+      const type = String(args?.type || '');
+      const value = String(args?.value || '').trim().slice(0, 1000);
+      if (type === 'app') { name = 'open_app'; args = { appName: value }; }
+      else if (type === 'search') { name = 'web_search'; args = { query: value, site: 'google' }; }
+      else if (type === 'youtube') { name = 'web_search'; args = { query: value, site: 'youtube' }; }
+      else if (type === 'media') { name = 'control_media'; args = { action: value || 'playpause' }; }
+      else if (type === 'url') {
+        try {
+          const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+          if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('protocol');
+          await shell.openExternal(url.href);
+          return `${url.hostname} açıldı.`;
+        } catch {
+          return 'Geçersiz web adresi.';
+        }
+      } else if (type === 'file') {
+        if (!value) return 'Dosya seçilmedi.';
+        // openPath starts the file with its default handler, without a shell
+        const err = await shell.openPath(value);
+        return err ? `Açılamadı: ${err}` : `${path.basename(value)} açıldı.`;
+      } else {
+        return 'Bilinmeyen işlem.';
+      }
+    }
+
     if (name === 'open_app') {
       const appName = String(args.appName || '').toLowerCase();
       // Fixed commands only. Never pass free-form (AI- or remote-provided) text to the
       // shell: `start ${appName}` allowed command injection (e.g. "calc & del ...").
-      const apps = [
-        { keys: ['youtube'], cmd: 'start https://www.youtube.com', label: 'YouTube' },
-        { keys: ['chrome', 'tarayıcı', 'browser', 'google', 'internet'], cmd: 'start https://www.google.com', label: 'Tarayıcı' },
-        { keys: ['spotify'], cmd: 'start spotify:', label: 'Spotify' },
-        { keys: ['vscode', 'code'], cmd: 'code', label: 'VS Code' },
-        { keys: ['notepad', 'not defteri'], cmd: 'start notepad', label: 'Not Defteri' },
-        { keys: ['calc', 'hesap makinesi'], cmd: 'start calc', label: 'Hesap Makinesi' },
-        { keys: ['downloads', 'download', 'indirilen'], cmd: 'explorer "%userprofile%\\Downloads"', label: 'İndirilenler' },
-        { keys: ['desktop', 'masaüstü'], cmd: 'explorer "%userprofile%\\Desktop"', label: 'Masaüstü' },
-        { keys: ['documents', 'belge'], cmd: 'explorer "%userprofile%\\Documents"', label: 'Belgeler' },
-        { keys: ['explorer', 'dosya gezgini'], cmd: 'explorer', label: 'Dosya Gezgini' },
-        { keys: ['settings', 'ayarlar'], cmd: 'start ms-settings:', label: 'Ayarlar' },
-        { keys: ['task_manager', 'görev yöneticisi'], cmd: 'start taskmgr', label: 'Görev Yöneticisi' },
-        { keys: ['paint'], cmd: 'start mspaint', label: 'Paint' },
-        { keys: ['terminal'], cmd: 'start wt || start cmd', label: 'Terminal' },
-        { keys: ['camera_app', 'kamera'], cmd: 'start microsoft.windows.camera:', label: 'Kamera' },
-        { keys: ['mail', 'posta'], cmd: 'start outlookmail:', label: 'Posta' },
-        { keys: ['calendar', 'takvim'], cmd: 'start outlookcal:', label: 'Takvim' },
-      ];
+      const apps = APP_COMMANDS;
       const match = apps.find(a => a.keys.some(k => appName === k || appName.includes(k)));
       if (!match) {
         return `${appName} için tanımlı bir kısayol yok.`;
@@ -828,7 +904,10 @@ const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => bringWindowToFront());
+  // Started again by the user: show the window. Started again by Windows at logon: stay hidden.
+  app.on('second-instance', (_e, argv) => {
+    if (!argv.includes('--hidden')) bringWindowToFront();
+  });
 }
 
 app.on('before-quit', () => { app.isQuitting = true; });

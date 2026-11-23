@@ -3,6 +3,9 @@ import { motion, AnimatePresence, MotionConfig, useSpring, useTransform } from '
 import { QRCodeSVG } from 'qrcode.react';
 import { Canvas } from '@react-three/fiber';
 import { Orb } from './components/Orb';
+import { OrbGalaxy } from './components/OrbGalaxy';
+import { RoutinesEditor, DEFAULT_ROUTINES } from './components/RoutinesEditor';
+import type { Routine } from './hooks/useJarvis';
 import { useJarvis, playJarvisSound, GEMINI_VOICES, EDGE_VOICES, type JarvisLanguage, type VoiceEngine } from './hooks/useJarvis';
 
 // Viewport width, for the few layout decisions CSS can't make (animated panel width)
@@ -74,6 +77,21 @@ export function App() {
   const [showQR, setShowQR] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
+  const [showRoutines, setShowRoutines] = useState(false);
+  // Custom commands ("Hey Jarvis" → greet and open Brave, …), kept on this device
+  const [routines, setRoutines] = useState<Routine[]>(() => {
+    try {
+      const saved = localStorage.getItem('jarvis_routines');
+      if (saved) return JSON.parse(saved);
+    } catch { /* corrupt value: fall back to the example */ }
+    return DEFAULT_ROUTINES;
+  });
+  useEffect(() => {
+    try { localStorage.setItem('jarvis_routines', JSON.stringify(routines)); } catch { /* storage full */ }
+  }, [routines]);
+  // Orb look: the new galaxy, or the original ("classic") one kept as a fallback
+  const [orbStyle, setOrbStyleState] = useState<'galaxy' | 'classic'>(() => (localStorage.getItem('jarvis_orb_style') === 'classic' ? 'classic' : 'galaxy'));
+  const setOrbStyle = (v: 'galaxy' | 'classic') => { setOrbStyleState(v); localStorage.setItem('jarvis_orb_style', v); };
   const [showChat, setShowChat] = useState(() => window.innerWidth >= 1100);
   const [showSidebar, setShowSidebar] = useState(false);
   const [connTest, setConnTest] = useState<{ state: 'idle' | 'testing' | 'ok' | 'fail'; message: string }>({ state: 'idle', message: '' });
@@ -130,7 +148,7 @@ export function App() {
     stopVoiceChat,
     sendTextMessage,
     sendImageToGemini
-  } = useJarvis(apiKey, language);
+  } = useJarvis(apiKey, language, routines);
 
   const statusRef = useRef(status);
   statusRef.current = status;
@@ -660,6 +678,10 @@ export function App() {
               <span className="tool-icon green"><ToolGlyph.phone /></span>
               <span className="row-label">{t('Telefondan Bağlan', 'Connect Phone')}</span>
             </button>
+            <button className={`nav-row tool ${showRoutines ? 'active' : ''}`} onClick={() => { closeDrawer(); setShowRoutines(true); }}>
+              <span className="tool-icon purple"><ToolGlyph.bolt /></span>
+              <span className="row-label">{t('Komutlar', 'Commands')}</span>
+            </button>
             <button className="nav-row tool" onClick={() => { closeDrawer(); setShowSettings(true); }}>
               <span className="tool-icon graphite"><ToolGlyph.gear /></span>
               <span className="row-label">{t('Ayarlar', 'Settings')}</span>
@@ -760,7 +782,7 @@ export function App() {
 
             {/* 3D Visualizer Orb Canvas (unchanged) */}
             <motion.div
-              className="orb-container"
+              className={`orb-container ${orbStyle}`}
               onClick={handleOrbClick}
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.96 }}
@@ -772,7 +794,9 @@ export function App() {
                 <pointLight position={[10, 10, 10]} intensity={1.5} color="#00f0ff" />
                 <pointLight position={[-10, -10, -10]} intensity={0.8} color="#ff007f" />
                 <pointLight position={[0, 0, 5]} intensity={0.5} />
-                <Orb status={status} audioLevel={audioLevel} />
+                {orbStyle === 'galaxy'
+                  ? <OrbGalaxy status={status} audioLevel={audioLevel} />
+                  : <Orb status={status} audioLevel={audioLevel} />}
               </Canvas>
             </motion.div>
 
@@ -1014,6 +1038,25 @@ export function App() {
         </div>
       </Sheet>
 
+      {/* Custom commands */}
+      <Sheet open={showRoutines} onClose={() => setShowRoutines(false)} width={560}>
+        <div className="sheet-header">
+          <div>
+            <h2 className="sheet-title">{t('Özel Komutlar', 'Custom Commands')}</h2>
+            <p className="sheet-subtitle">
+              {t('Bir cümle söylediğinizde JARVIS’in ne diyeceğini ve ne yapacağını belirleyin. Değişiklikler hemen kaydedilir.', 'Choose what JARVIS says and does when you say a phrase. Changes are saved right away.')}
+            </p>
+          </div>
+          <button className="btn btn-plain" onClick={() => setShowRoutines(false)}>{t('Bitti', 'Done')}</button>
+        </div>
+        <RoutinesEditor
+          routines={routines}
+          onChange={setRoutines}
+          language={language}
+          onTry={(r) => { setShowRoutines(false); sendTextMessage(r.trigger.trim() ? r.trigger.trim() : 'Hey Jarvis'); }}
+        />
+      </Sheet>
+
       {/* Settings */}
       <Sheet open={showSettings} onClose={handleCloseSettings} width={460}>
         <div className="sheet-header">
@@ -1072,6 +1115,31 @@ export function App() {
               options={[{ value: 'tr-TR', label: 'Türkçe' }, { value: 'en-US', label: 'English' }]}
             />
           </div>
+          <div className="group-row">
+            <span>{t('Küre görünümü', 'Orb style')}</span>
+            <Segmented
+              id="orb"
+              value={orbStyle}
+              onChange={(v) => setOrbStyle(v as 'galaxy' | 'classic')}
+              options={[{ value: 'galaxy', label: t('Galaksi', 'Galaxy') }, { value: 'classic', label: t('Klasik', 'Classic') }]}
+            />
+          </div>
+        </div>
+
+        <div className="group-label" style={{ marginTop: 16 }}>{t('Komutlar', 'Commands')}</div>
+        <div className="group">
+          <div className="group-row">
+            <span>
+              {t('Özel komutlar', 'Custom commands')}
+              <span className="row-sub">{t(`${routines.length} komut`, `${routines.length} commands`)}</span>
+            </span>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setShowSettings(false); setShowRoutines(true); }}>
+              {t('Düzenle', 'Edit')}
+            </button>
+          </div>
+        </div>
+        <div className="group-footnote">
+          {t('Örn. “Hey Jarvis” dediğinizde “Merhaba efendim, hoş geldiniz” deyip Brave’i açsın.', 'E.g. when you say “Hey Jarvis”, greet you and open Brave.')}
         </div>
 
         <div className="group-label" style={{ marginTop: 16 }}>{t('Arka Plan', 'Background')}</div>
@@ -1327,6 +1395,11 @@ const Icon = {
    Cut-outs use evenodd so the tile color shows through, like SF Symbols ".fill". */
 const glyph = { width: 16, height: 16, viewBox: '0 0 24 24', fill: '#fff', 'aria-hidden': true } as const;
 const ToolGlyph = {
+  bolt: () => (
+    <svg {...glyph}>
+      <path d="M13.6 2.2 5.3 13a.7.7 0 0 0 .55 1.13H11l-1.15 7.1c-.1.62.68.95 1.06.45l8.3-10.8a.7.7 0 0 0-.55-1.13H13.4l1.25-7.06c.1-.6-.66-.93-1.05-.49z" />
+    </svg>
+  ),
   display: () => (
     <svg {...glyph}>
       <path fillRule="evenodd" d="M4.5 3.5h15A2.5 2.5 0 0 1 22 6v9.5a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 15.5V6a2.5 2.5 0 0 1 2.5-2.5zm.5 2.5v9h14V6z" />

@@ -61,7 +61,7 @@ const TOOLS = [{
         properties: {
           app: {
             type: 'STRING',
-            enum: ['chrome', 'youtube', 'spotify', 'vscode', 'notepad', 'calculator', 'explorer', 'downloads', 'desktop', 'documents', 'settings', 'task_manager', 'paint', 'terminal', 'camera_app', 'mail', 'calendar'],
+            enum: ['chrome', 'brave', 'edge', 'firefox', 'operagx', 'youtube', 'spotify', 'discord', 'steam', 'whatsapp', 'telegram', 'vscode', 'notepad', 'calculator', 'explorer', 'downloads', 'desktop', 'documents', 'settings', 'task_manager', 'paint', 'terminal', 'camera_app', 'mail', 'calendar'],
           },
         },
         required: ['app'],
@@ -176,13 +176,67 @@ async function runTool(name: string, args: any): Promise<string> {
    Speech helpers
    -------------------------------------------------------------------------- */
 
-const WAKE = /^(hey |hi |ey |merhaba |selam )?(jarvis|carvis|cervis|çervis|jarviz|jervis|charvis)\b[\s,.!?]*/i;
+// How "Jarvis" comes back from speech-to-text, especially with a Turkish accent:
+// "Jarvis", "Jarvis'e", "Carvis", "Çarvis", "Cervis", "Jervis", "Javis", "Jarwis"…
+const WAKE_WORD = /^(jarv|carv|çarv|cerv|çerv|jerv|charv|jarw|carw|jav[iıy]s|jarb[iı]s)/;
+// Words that may come before the name: "Hey, Jarvis", "Merhaba Jarvis", "Tamam Jarvis"
+const WAKE_FILLERS = new Set(['hey', 'heyy', 'hei', 'hay', 'ey', 'hi', 'hello', 'merhaba', 'selam', 'alo', 'ok', 'okay', 'tamam', 'oke']);
+const wordKey = (w: string) => w.toLocaleLowerCase('tr-TR').replace(/[^a-zçğıöşü]/g, '');
 
 function stripWakeWord(text: string): { woke: boolean; rest: string } {
   const t = text.trim();
-  const m = t.match(WAKE);
-  if (!m) return { woke: false, rest: t };
-  return { woke: true, rest: t.slice(m[0].length).trim() };
+  const words = t.split(/\s+/);
+  for (let i = 0; i < Math.min(words.length, 3); i++) {
+    if (!WAKE_WORD.test(wordKey(words[i]))) continue;
+    if (!words.slice(0, i).every(w => WAKE_FILLERS.has(wordKey(w)))) break;
+    const rest = words.slice(i + 1).join(' ').replace(/^[\s,.!?;:]+/, '').trim();
+    return { woke: true, rest };
+  }
+  return { woke: false, rest: t };
+}
+
+/* --------------------------------------------------------------------------
+   Custom commands ("routines") the user sets up in Settings
+   -------------------------------------------------------------------------- */
+
+export type RoutineActionType = 'app' | 'url' | 'search' | 'youtube' | 'media' | 'file';
+export interface RoutineAction { type: RoutineActionType; value: string }
+export interface Routine {
+  id: string;
+  /** What the user says. Empty = just "Hey Jarvis" on its own. */
+  trigger: string;
+  reply: string;
+  actions: RoutineAction[];
+  enabled?: boolean;
+}
+
+const normalizePhrase = (s: string) =>
+  s.toLocaleLowerCase('tr-TR').replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+
+export function findRoutine(routines: Routine[], request: string, wakeWordOnly: boolean): Routine | undefined {
+  const req = normalizePhrase(request);
+  for (const r of routines) {
+    if (r.enabled === false) continue;
+    const trig = normalizePhrase(r.trigger || '');
+    if (!trig) {
+      // "" means "just Hey Jarvis"; a phrase command with nothing typed yet never matches
+      if (wakeWordOnly && !r.trigger) return r;
+      continue;
+    }
+    if (req && (req === trig || (trig.length >= 3 && req.includes(trig)))) return r;
+  }
+  return undefined;
+}
+
+async function runRoutineAction(a: RoutineAction): Promise<string> {
+  const r = ipc();
+  if (!r) return 'Bu işlem yalnızca masaüstü uygulamasında yapılabilir.';
+  try {
+    const res = await r.invoke('execute-tool', { name: 'routine_action', args: { type: a.type, value: a.value } });
+    return typeof res === 'string' ? res : '';
+  } catch (e: any) {
+    return `İşlem başarısız: ${e?.message || e}`;
+  }
 }
 
 const STOP_PHRASES = new Set([
@@ -211,7 +265,7 @@ function speakable(text: string): string {
    Hook
    -------------------------------------------------------------------------- */
 
-export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
+export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', routines: Routine[] = []) {
   const tr = language === 'tr-TR';
   const [status, setStatus] = useState<JarvisStatus>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
@@ -246,8 +300,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
   const setEdgeVoice = persist<string>('jarvis_edge_voice', setEdgeVoiceState);
 
   // Refs keep async callbacks reading current values instead of stale closures
-  const live = useRef({ apiKey, language, isMuted, isAlwaysListening, voicePitch, voiceRate, voiceEngine, geminiVoice, edgeVoice });
-  live.current = { apiKey, language, isMuted, isAlwaysListening, voicePitch, voiceRate, voiceEngine, geminiVoice, edgeVoice };
+  const live = useRef({ apiKey, language, isMuted, isAlwaysListening, voicePitch, voiceRate, voiceEngine, geminiVoice, edgeVoice, routines });
+  live.current = { apiKey, language, isMuted, isAlwaysListening, voicePitch, voiceRate, voiceEngine, geminiVoice, edgeVoice, routines };
 
   const statusRef = useRef<JarvisStatus>('idle');
   const sessionRef = useRef(0);
@@ -519,6 +573,28 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     }
   }, [clearError, handleFailure, showError, speakText, tr, updateStatus]);
 
+  /** Runs a custom command: speaks its reply while its actions run. */
+  const runRoutine = useCallback(async (r: Routine, display: string, session: number) => {
+    clearError();
+    setConversation(prev => [...prev, { role: 'user', content: display }]);
+    const actions = (async () => {
+      for (const a of r.actions) {
+        if (!a.value?.trim() && a.type !== 'media') continue;
+        const out = await runRoutineAction(a);
+        if (out) setConversation(prev => [...prev, { role: 'system', content: out }]);
+      }
+      if (r.actions.length) playJarvisSound('success');
+    })();
+    const reply = r.reply.trim();
+    if (reply) {
+      setConversation(prev => [...prev, { role: 'model', content: reply }]);
+      setCurrentResponse(reply);
+      await speakText(reply, session);
+    }
+    await actions;
+    if (!reply) afterSpeaking(session);
+  }, [afterSpeaking, clearError, speakText]);
+
   /* ---------------- listening ---------------- */
 
   const transcribe = async (wavBase64: string, signal: AbortSignal): Promise<string> => {
@@ -529,7 +605,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
       temperature: 0,
       maxOutputTokens: 400,
       deadlineMs: 15000,
-      system: 'You are a speech-to-text engine. Transcribe the audio exactly as spoken, in the language spoken (usually Turkish, sometimes English). Output only the transcript text with normal punctuation. If there is no intelligible speech, output nothing.',
+      system: 'You are a speech-to-text engine. Transcribe the audio exactly as spoken, in the language spoken (usually Turkish, sometimes English). The speaker often addresses the assistant by the name "Jarvis" (for example "Hey Jarvis"); always spell that name exactly "Jarvis". Output only the transcript text with normal punctuation. If there is no intelligible speech, output nothing.',
       contents: [{
         role: 'user',
         parts: [
@@ -660,6 +736,9 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
 
     if (isStopCommand(text)) { stopVoiceChat(); backToWakeLoop(400); return; }
 
+    const routine = findRoutine(live.current.routines, woke ? rest : text, woke && !rest);
+    if (routine) { await runRoutine(routine, text, session); return; }
+
     if (woke && !rest) {
       const reply = tr ? 'Buyurun efendim.' : 'Yes, sir?';
       setConversation(prev => [...prev, { role: 'user', content: text }, { role: 'model', content: reply }]);
@@ -669,7 +748,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     }
     const request = woke ? rest : text;
     await runTurn([{ text: request }], text, session);
-  }, [clearError, flashNotice, focusAppWindow, haltAll, handleFailure, runTurn, showError, speakText, stopVoiceChat, tr, updateStatus]);
+  }, [clearError, flashNotice, focusAppWindow, haltAll, handleFailure, runRoutine, runTurn, showError, speakText, stopVoiceChat, tr, updateStatus]);
 
   startListeningRef.current = startListening;
 
@@ -686,8 +765,11 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR') {
     if (!t) return;
     if (isStopCommand(t)) { stopVoiceChat(); return; }
     const session = haltAll();
-    await runTurn([{ text: t }], t, session);
-  }, [haltAll, runTurn, stopVoiceChat]);
+    const { woke, rest } = stripWakeWord(t);
+    const routine = findRoutine(live.current.routines, woke ? rest : t, woke && !rest);
+    if (routine) { await runRoutine(routine, t, session); return; }
+    await runTurn([{ text: woke && rest ? rest : t }], t, session);
+  }, [haltAll, runRoutine, runTurn, stopVoiceChat]);
 
   const sendImageToGemini = useCallback(async (base64Image: string, promptText: string, display?: string) => {
     const session = haltAll();
