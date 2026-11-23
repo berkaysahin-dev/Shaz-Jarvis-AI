@@ -79,6 +79,16 @@
 
 ---
 
+## Download (Windows)
+
+Get the latest version from **[Releases](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/releases/latest)**:
+
+- **`JARVIS.Setup.x.y.z.exe`**: installer with Start menu and desktop shortcuts.
+- **`JARVIS.x.y.z.exe`**: portable, runs without installing.
+
+On first launch, enter your own free [Google Gemini API key](https://aistudio.google.com/apikey) in Settings. The key is stored only on your PC.
+The app is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC": click **More info › Run anyway**.
+
 ## Quick Start & Installation
 
 ### Prerequisites

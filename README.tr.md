@@ -78,6 +78,16 @@
 
 ---
 
+## İndir (Windows)
+
+En güncel sürümü **[Releases](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/releases/latest)** sayfasından indirin:
+
+- **`JARVIS.Setup.x.y.z.exe`**: Başlat menüsü ve masaüstü kısayoluyla kurulum.
+- **`JARVIS.x.y.z.exe`**: Taşınabilir sürüm, kurulum gerektirmez.
+
+İlk açılışta Ayarlar’dan kendi ücretsiz [Google Gemini API anahtarınızı](https://aistudio.google.com/apikey) girin. Anahtar yalnızca sizin bilgisayarınızda saklanır.
+Uygulama henüz dijital olarak imzalı olmadığı için Windows SmartScreen “Windows bilgisayarınızı korudu” uyarısı gösterebilir: **Ek bilgi › Yine de çalıştır**’a tıklayın.
+
 ## Hızlı Başlangıç & Kurulum
 
 ### Gereksinimler

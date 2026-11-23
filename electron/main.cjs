@@ -219,21 +219,40 @@ function applyLoginItem() {
   }
 }
 
+// Is an app installed? Checked first so a missing app never pops up Windows'
+// "can't find" / "get an app" dialog on someone else's PC.
+function regKeyExists(key) {
+  try {
+    require('child_process').execFileSync('reg', ['query', key], { stdio: 'ignore', windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isInstalled(entry) {
+  if (entry.exe) {
+    const sub = `Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\${entry.exe}`;
+    return regKeyExists(`HKCU\\${sub}`) || regKeyExists(`HKLM\\${sub}`);
+  }
+  if (entry.proto) return regKeyExists(`HKCR\\${entry.proto}`);
+  return true;
+}
+
 // Launch commands for known apps. Fixed strings only: never pass free-form
 // (AI-, remote- or settings-provided) text to the shell.
 const APP_COMMANDS = [
   { keys: ['youtube'], cmd: 'start https://www.youtube.com', label: 'YouTube' },
-  { keys: ['brave'], cmd: 'start "" brave', label: 'Brave' },
-  { keys: ['edge', 'msedge'], cmd: 'start "" msedge', label: 'Microsoft Edge' },
-  { keys: ['firefox'], cmd: 'start "" firefox', label: 'Firefox' },
-  { keys: ['operagx', 'opera'], cmd: 'start "" opera', label: 'Opera GX' },
-  { keys: ['chrome'], cmd: 'start "" chrome', label: 'Google Chrome' },
+  { keys: ['brave'], cmd: 'start "" brave', label: 'Brave', exe: 'brave.exe', browser: true },
+  { keys: ['edge', 'msedge'], cmd: 'start "" msedge', label: 'Microsoft Edge', exe: 'msedge.exe', browser: true },
+  { keys: ['firefox'], cmd: 'start "" firefox', label: 'Firefox', exe: 'firefox.exe', browser: true },
+  { keys: ['operagx', 'opera'], cmd: 'start "" opera', label: 'Opera GX', exe: 'opera.exe', browser: true },
+  { keys: ['chrome'], cmd: 'start "" chrome', label: 'Google Chrome', exe: 'chrome.exe', browser: true },
   { keys: ['tarayıcı', 'browser', 'google', 'internet'], cmd: 'start https://www.google.com', label: 'Tarayıcı' },
-  { keys: ['spotify'], cmd: 'start spotify:', label: 'Spotify' },
-  { keys: ['discord'], cmd: 'start discord:', label: 'Discord' },
-  { keys: ['steam'], cmd: 'start steam:', label: 'Steam' },
-  { keys: ['whatsapp'], cmd: 'start whatsapp:', label: 'WhatsApp' },
-  { keys: ['telegram'], cmd: 'start tg:', label: 'Telegram' },
+  { keys: ['spotify'], cmd: 'start spotify:', label: 'Spotify', proto: 'spotify' },
+  { keys: ['discord'], cmd: 'start discord:', label: 'Discord', proto: 'discord' },
+  { keys: ['steam'], cmd: 'start steam:', label: 'Steam', proto: 'steam' },
+  { keys: ['whatsapp'], cmd: 'start whatsapp:', label: 'WhatsApp', proto: 'whatsapp' },
+  { keys: ['telegram'], cmd: 'start tg:', label: 'Telegram', proto: 'tg' },
   { keys: ['vscode', 'code'], cmd: 'code', label: 'VS Code' },
   { keys: ['notepad', 'not defteri'], cmd: 'start notepad', label: 'Not Defteri' },
   { keys: ['calc', 'hesap makinesi'], cmd: 'start calc', label: 'Hesap Makinesi' },
@@ -351,11 +370,11 @@ function refreshTrayMenu() {
 function trayTemplate() {
   return [
       {
-        label: '🤖 JARVIS 2.0 Aç',
+        label: 'JARVIS’i Aç',
         click: () => bringWindowToFront()
       },
       {
-        label: '🎙️ Dinlemeyi Başlat (Alt+Space)',
+        label: 'Dinlemeyi Başlat (Alt+Space)',
         click: () => {
           bringWindowToFront();
           if (mainWindow) mainWindow.webContents.send('trigger-voice-listening');
@@ -630,6 +649,14 @@ function createWindow() {
       if (!match) {
         return `${appName} için tanımlı bir kısayol yok.`;
       }
+      if (!isInstalled(match)) {
+        if (match.browser) {
+          // e.g. the "Hey Jarvis -> open Brave" command on a PC without Brave
+          await require('electron').shell.openExternal('https://www.google.com');
+          return `${match.label} yüklü değil; varsayılan tarayıcı açıldı.`;
+        }
+        return `${match.label} bu bilgisayarda yüklü değil.`;
+      }
       return new Promise((resolve) => {
         exec(match.cmd, { windowsHide: true }, (err) => {
           resolve(err ? `${match.label} açılamadı.` : `${match.label} açıldı.`);
@@ -734,7 +761,7 @@ function createWindow() {
         const { Notification } = require('electron');
         if (Notification.isSupported()) {
           new Notification({
-            title: '🤖 JARVIS Anımsatıcı',
+            title: 'JARVIS Hatırlatma',
             body: title
           }).show();
         }

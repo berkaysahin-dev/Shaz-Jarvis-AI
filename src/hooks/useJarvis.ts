@@ -251,12 +251,17 @@ function isStopCommand(text: string): boolean {
   return STOP_PHRASES.has(clean) || STOP_PHRASES.has(rest);
 }
 
+// JARVIS never shows or speaks emoji, even if the model or a custom command adds some
+const EMOJI = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}\u{20E3}]/gu;
+export function stripEmoji(text: string): string {
+  return text.replace(EMOJI, '').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
 function speakable(text: string): string {
-  return text
+  return stripEmoji(text)
     .replace(/```[\s\S]*?```/g, '')
     .replace(/[*#_`~>[\]()]/g, '')
     .replace(/\bhttps?:\/\/\S+/gi, '')
-    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -562,6 +567,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
       pushHistory({ role: 'user', parts: textParts.length ? textParts : [{ text: display }] });
       pushHistory({ role: 'model', parts: [{ text: reply }] });
 
+      reply = stripEmoji(reply);
       setConversation(prev => [...prev, { role: 'model', content: reply }]);
       setCurrentResponse(reply);
       if (abortRef.current === controller) abortRef.current = null;
@@ -585,7 +591,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
       }
       if (r.actions.length) playJarvisSound('success');
     })();
-    const reply = r.reply.trim();
+    const reply = stripEmoji(r.reply);
     if (reply) {
       setConversation(prev => [...prev, { role: 'model', content: reply }]);
       setCurrentResponse(reply);
@@ -776,7 +782,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
     // Image questions only need a description, not computer actions: no tools keeps it fast
     await runTurn(
       [{ text: promptText || (tr ? 'Bu görüntüde ne var? Kısaca açıkla.' : 'What is in this image? Briefly explain.') }, { inline_data: { mime_type: 'image/jpeg', data: base64Image } }],
-      display || (tr ? '📷 [Görüntü analizi]' : '📷 [Image analysis]'),
+      display || '[[image]]',
       session,
       { tools: false },
     );

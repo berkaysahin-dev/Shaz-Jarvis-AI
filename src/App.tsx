@@ -388,7 +388,7 @@ export function App() {
           sendImageToGemini(base64, t(
             'Bu, şu an bakmakta olduğum ekranın görüntüsü. Ne olduğunu en fazla 2-3 kısa cümleyle anlat; bir hata ya da sorun görüyorsan çözümünü söyle.',
             'This is the screen I am looking at right now. Describe it in at most 2-3 short sentences; if you see an error or problem, say how to fix it.'
-          ), t('🖥️ [Ekran analizi]', '🖥️ [Screen analysis]'));
+          ), '[[screen]]');
         } else {
           playJarvisSound('error');
         }
@@ -548,13 +548,13 @@ export function App() {
   };
 
   const formatMessage = (content: string) => {
-    if (content.startsWith('🎤')) {
+    if (content === '[[voice]]') {
       return <span className="msg-meta"><Icon.mic size={14} /> {t('Sesli mesaj', 'Voice message')}</span>;
     }
-    if (content.startsWith('🖥️')) {
+    if (content === '[[screen]]') {
       return <span className="msg-meta"><Icon.display size={14} /> {t('Ekran analizi', 'Screen analysis')}</span>;
     }
-    if (content.startsWith('📷')) {
+    if (content === '[[image]]') {
       return <span className="msg-meta"><Icon.camera size={14} /> {t('Kamera görüntüsü', 'Camera image')}</span>;
     }
     return content;

@@ -1,6 +1,6 @@
 {
   "name": "vision-jarvis",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": false,
   "description": "JARVIS 2.0 - Native Desktop AI Voice & Vision Assistant powered by Google Gemini and Shaz Agency",
   "author": "Berkay Şahin <berkay@shazagency.com> (https://shazagency.com)",
@@ -57,6 +57,9 @@
     ]
   },
   "devDependencies": {
+    "@google/genai": "^2.17.0",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
@@ -64,21 +67,18 @@
     "cross-env": "^10.1.0",
     "electron": "^43.8.1",
     "electron-builder": "^26.15.3",
+    "framer-motion": "^13.1.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.185.1",
     "typescript": "~6.0.2",
     "vite": "^8.3.4",
     "vite-plugin-mkcert": "^2.1.0",
     "wait-on": "^9.1.0"
   },
   "dependencies": {
-    "@google/genai": "^2.17.0",
-    "@react-three/drei": "^10.7.8",
-    "@react-three/fiber": "^9.7.0",
-    "framer-motion": "^13.1.0",
-    "msedge-tts": "^2.0.7",
-    "qrcode.react": "^4.2.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "three": "^0.185.1"
+    "msedge-tts": "^2.1.1"
   },
   "overrides": {
     "minimatch": "^11.0.1"
