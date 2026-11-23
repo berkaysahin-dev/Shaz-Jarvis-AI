@@ -16,6 +16,7 @@ export const GEMINI_CONFIG = {
   TOTAL_DEADLINE_MS: 25000,
   TTS_TIMEOUT_MS: 15000,
   DISCOVERY_TIMEOUT_MS: 4000,
-  // Messages of context sent with every request
-  HISTORY_TURNS: 12,
+  // Messages of context sent with every request: the whole conversation since JARVIS was
+  // opened (kept until it quits), capped only as a safety net for very long sessions
+  HISTORY_TURNS: 400,
 };

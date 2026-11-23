@@ -146,6 +146,8 @@ interface GenerateOptions {
   tools?: any[];
   fast?: boolean;
   maxOutputTokens?: number;
+  /** Ask for a JSON reply (responseMimeType application/json) */
+  json?: boolean;
   temperature?: number;
   signal?: AbortSignal;
   deadlineMs?: number;
@@ -176,6 +178,7 @@ export async function generate(opts: GenerateOptions): Promise<GenerateResult> {
         generationConfig: {
           maxOutputTokens: opts.maxOutputTokens ?? 1024,
           temperature: opts.temperature ?? 0.7,
+          ...(opts.json ? { responseMimeType: 'application/json' } : {}),
           ...(thinking ? { thinkingConfig: thinking } : {}),
         },
       };

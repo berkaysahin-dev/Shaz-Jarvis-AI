@@ -39,6 +39,30 @@ const ipc = (): any | null => {
   try { return (window as any).require('electron').ipcRenderer; } catch { return null; }
 };
 
+// Conversation memory lives for the whole JARVIS session (until the app quits). sessionStorage
+// survives closing the window to the tray and page reloads, and is wiped when JARVIS exits.
+function readSession<T>(key: string, fallback: T): T {
+  try {
+    const v = sessionStorage.getItem(key);
+    return v ? (JSON.parse(v) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function writeSession(key: string, value: unknown) {
+  try { sessionStorage.setItem(key, JSON.stringify(value)); } catch { /* quota: keep in memory */ }
+}
+
+// True when a transcript is just JARVIS hearing its own voice from the speakers
+const words = (s: string) => s.toLocaleLowerCase('tr-TR').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 1);
+function isOwnEcho(heard: string, spoken: string): boolean {
+  const h = words(heard);
+  if (!h.length || !spoken) return false;
+  const s = new Set(words(spoken));
+  const overlap = h.filter(w => s.has(w)).length / h.length;
+  return overlap >= 0.6;
+}
+
 function readPref<T extends string | number | boolean>(key: string, fallback: T): T {
   const v = localStorage.getItem(key);
   if (v === null) return fallback;
@@ -183,16 +207,22 @@ const WAKE_WORD = /^(jarv|carv|çarv|cerv|çerv|jerv|charv|jarw|carw|jav[iıy]s|
 const WAKE_FILLERS = new Set(['hey', 'heyy', 'hei', 'hay', 'ey', 'hi', 'hello', 'merhaba', 'selam', 'alo', 'ok', 'okay', 'tamam', 'oke']);
 const wordKey = (w: string) => w.toLocaleLowerCase('tr-TR').replace(/[^a-zçğıöşü]/g, '');
 
-function stripWakeWord(text: string): { woke: boolean; rest: string } {
+function stripWakeWord(text: string, anywhere = false): { woke: boolean; rest: string } {
   const t = text.trim();
   const words = t.split(/\s+/);
-  for (let i = 0; i < Math.min(words.length, 3); i++) {
+  for (let i = 0; i < (anywhere ? words.length : Math.min(words.length, 3)); i++) {
     if (!WAKE_WORD.test(wordKey(words[i]))) continue;
-    if (!words.slice(0, i).every(w => WAKE_FILLERS.has(wordKey(w)))) break;
+    if (!anywhere && !words.slice(0, i).every(w => WAKE_FILLERS.has(wordKey(w)))) break;
     const rest = words.slice(i + 1).join(' ').replace(/^[\s,.!?;:]+/, '').trim();
     return { woke: true, rest };
   }
   return { woke: false, rest: t };
+}
+
+// Speech-to-text sometimes answers "<noise>", "[music]" or "(silence)" instead of nothing
+function cleanTranscript(text: string): string {
+  const t = text.replace(/<[^>]*>|\[[^\]]*\]|\([^)]*\)/g, ' ').replace(/^["“]|["”]$/g, '').replace(/\s+/g, ' ').trim();
+  return /\p{L}/u.test(t) ? t : '';
 }
 
 /* --------------------------------------------------------------------------
@@ -274,7 +304,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
   const tr = language === 'tr-TR';
   const [status, setStatus] = useState<JarvisStatus>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
-  const [conversation, setConversation] = useState<Message[]>([]);
+  const [conversation, setConversation] = useState<Message[]>(() => readSession<Message[]>('jarvis_conversation', []));
   const [currentResponse, setCurrentResponse] = useState('');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -313,7 +343,9 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
   const recorderRef = useRef<MicRecorder | null>(null);
   const playbackRef = useRef<Playback | null>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const historyRef = useRef<Content[]>([]);
+  const historyRef = useRef<Content[]>(readSession<Content[]>('jarvis_history', []));
+  // What JARVIS last said and when it finished, to ignore its own voice picked up by the mic
+  const lastSpoken = useRef<{ text: string; endedAt: number }>({ text: '', endedAt: 0 });
   const geminiTtsPausedUntil = useRef(0);
   const noticeTimer = useRef<any>(null);
   const startListeningRef = useRef<(mode?: ListenMode) => void>(() => {});
@@ -365,6 +397,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
   /* ---------------- speaking ---------------- */
 
   const afterSpeaking = useCallback((session: number) => {
+    lastSpoken.current.endedAt = Date.now();
     if (session !== sessionRef.current) return;
     setAudioLevel(0);
     updateStatus('idle');
@@ -372,7 +405,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
       // Keep the conversation going: a follow-up right after a reply needs no "Jarvis"
       setTimeout(() => {
         if (session === sessionRef.current && statusRef.current === 'idle') startListeningRef.current('followup');
-      }, 350);
+      }, 900);
     }
   }, [updateStatus]);
 
@@ -395,6 +428,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
   const speakText = useCallback(async (text: string, session = sessionRef.current, force?: { engine: VoiceEngine; voice: string }) => {
     const clean = speakable(text);
     if (!clean || session !== sessionRef.current) { afterSpeaking(session); return; }
+    lastSpoken.current = { text: clean, endedAt: Date.now() + 60000 };
     const p = live.current;
     const engine = force?.engine ?? p.voiceEngine;
     const controller = new AbortController();
@@ -495,6 +529,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
 
   const pushHistory = (c: Content) => {
     historyRef.current = [...historyRef.current, c].slice(-GEMINI_CONFIG.HISTORY_TURNS);
+    writeSession('jarvis_history', historyRef.current);
   };
 
   const handleFailure = useCallback((e: any, session: number) => {
@@ -592,6 +627,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
       if (r.actions.length) playJarvisSound('success');
     })();
     const reply = stripEmoji(r.reply);
+    pushHistory({ role: 'user', parts: [{ text: display }] });
+    pushHistory({ role: 'model', parts: [{ text: reply || (r.actions.length ? '(İşlem yapıldı.)' : '(Tamam.)') }] });
     if (reply) {
       setConversation(prev => [...prev, { role: 'model', content: reply }]);
       setCurrentResponse(reply);
@@ -611,7 +648,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
       temperature: 0,
       maxOutputTokens: 400,
       deadlineMs: 15000,
-      system: 'You are a speech-to-text engine. Transcribe the audio exactly as spoken, in the language spoken (usually Turkish, sometimes English). The speaker often addresses the assistant by the name "Jarvis" (for example "Hey Jarvis"); always spell that name exactly "Jarvis". Output only the transcript text with normal punctuation. If there is no intelligible speech, output nothing.',
+      system: 'You are a speech-to-text engine. Transcribe the audio exactly as spoken, in the language spoken (usually Turkish, sometimes English). If the speaker says the assistant\'s name, spell it "Jarvis". Output only the transcript text with normal punctuation. If there is no intelligible speech, output nothing.',
       contents: [{
         role: 'user',
         parts: [
@@ -620,7 +657,42 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
         ],
       }],
     });
-    return res.text.replace(/^["“]|["”]$/g, '').trim();
+    return cleanTranscript(res.text);
+  };
+
+  /**
+   * Background loop: a yes/no question ("did someone clearly say Jarvis?") instead of free
+   * transcription. Asking for a transcript with a hint about the name made the model hear
+   * "Hey Jarvis" in noise; without the hint it missed real ones. Returns '' when not woken.
+   */
+  const detectWake = async (wavBase64: string, signal: AbortSignal): Promise<string> => {
+    const res = await generate({
+      apiKey: live.current.apiKey,
+      fast: true,
+      json: true,
+      signal,
+      temperature: 0,
+      maxOutputTokens: 300,
+      deadlineMs: 15000,
+      system: 'You detect the wake word of a voice assistant named "Jarvis". Decide whether a person in this recording clearly and deliberately says the name Jarvis, for example "Hey Jarvis", "Jarvis", "Merhaba Jarvis", "Jarvis, müziği aç" (with a Turkish accent it can sound like "Carvis" or "Cervis"). Answer false for noise, music, TV, videos, typing, unclear speech, or speech without that name. If you are not sure, answer false. Respond only with JSON: {"wake": boolean, "transcript": "the exact words spoken in their language, with the name written as Jarvis, or empty"}.',
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: 'Recording:' },
+          { inline_data: { mime_type: 'audio/wav', data: wavBase64 } },
+        ],
+      }],
+    });
+    try {
+      const raw = res.text.trim().replace(/^```(?:json)?|```$/g, '').trim();
+      const data = JSON.parse(raw);
+      if (data?.wake !== true) return '';
+      const heard = cleanTranscript(String(data.transcript || ''));
+      // The model's yes must also show the name in what it heard
+      return stripWakeWord(heard, true).woke ? heard : '';
+    } catch {
+      return '';
+    }
   };
 
   /**
@@ -665,6 +737,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
         endSilenceMs: passive ? 900 : 1300,
         noSpeechTimeoutMs: passive ? 30000 : mode === 'followup' ? 6000 : 8000,
         maxDurationMs: passive ? 9000 : 25000,
+        // In the background only clear, deliberate speech wakes JARVIS
+        ...(passive ? { minLevel: 0.016, startAfterMs: 160, minSpeechMs: 350 } : {}),
       });
     } catch (e: any) {
       if (session !== sessionRef.current) return;
@@ -705,7 +779,9 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
     abortRef.current = controller;
     let text = '';
     try {
-      text = await transcribe(result.wavBase64, controller.signal);
+      text = passive
+        ? await detectWake(result.wavBase64, controller.signal)
+        : await transcribe(result.wavBase64, controller.signal);
       passiveFailures.current = 0;
     } catch (e) {
       if (session !== sessionRef.current) return;
@@ -732,7 +808,15 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
       return;
     }
 
-    const { woke, rest } = stripWakeWord(text);
+    // JARVIS hearing itself from the speakers: never treat that as a request
+    if (Date.now() - lastSpoken.current.endedAt < 20000 && isOwnEcho(text, lastSpoken.current.text)) {
+      console.warn('[JARVIS] ignored own voice:', text);
+      backToWakeLoop(400);
+      return;
+    }
+
+    // In the background the name may also come mid-sentence ("Tamam o zaman Jarvis, ...")
+    const { woke, rest } = stripWakeWord(text, passive);
     if (passive) {
       if (!woke) { backToWakeLoop(); return; }
       // "Hey Jarvis": bring JARVIS up even if its window was closed to the tray
@@ -747,6 +831,8 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
 
     if (woke && !rest) {
       const reply = tr ? 'Buyurun efendim.' : 'Yes, sir?';
+      pushHistory({ role: 'user', parts: [{ text }] });
+      pushHistory({ role: 'model', parts: [{ text: reply }] });
       setConversation(prev => [...prev, { role: 'user', content: text }, { role: 'model', content: reply }]);
       setCurrentResponse(reply);
       await speakText(reply, session);
@@ -808,6 +894,7 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
 
   const clearConversation = useCallback(() => {
     historyRef.current = [];
+    writeSession('jarvis_history', []);
     setConversation([]);
     setCurrentResponse('');
   }, []);
@@ -845,6 +932,9 @@ export function useJarvis(apiKey: string, language: JarvisLanguage = 'tr-TR', ro
     }, 800);
     return () => clearTimeout(t);
   }, [apiKey, isAlwaysListening, isMuted]);
+
+  // Keep the visible chat for the whole session, like the model's memory
+  useEffect(() => { writeSession('jarvis_conversation', conversation.slice(-400)); }, [conversation]);
 
   // Clean up the microphone and audio when the app unmounts
   useEffect(() => () => { haltAll(); }, [haltAll]);

@@ -78,6 +78,12 @@ export interface RecorderOptions {
   /** Give up if nobody speaks for this long */
   noSpeechTimeoutMs?: number;
   maxDurationMs?: number;
+  /** Lowest RMS level that can count as speech (raise it to ignore quiet background sound) */
+  minLevel?: number;
+  /** How long sound must last before it counts as speech */
+  startAfterMs?: number;
+  /** Utterances shorter than this are dropped */
+  minSpeechMs?: number;
 }
 
 const TARGET_RATE = 16000;
@@ -97,6 +103,9 @@ export class MicRecorder {
     const endSilenceMs = opts.endSilenceMs ?? 1300;
     const noSpeechTimeoutMs = opts.noSpeechTimeoutMs ?? 8000;
     const maxDurationMs = opts.maxDurationMs ?? 25000;
+    const minLevel = opts.minLevel ?? 0.012;
+    const startAfterMs = opts.startAfterMs ?? 120;
+    const minSpeechMs = opts.minSpeechMs ?? 250;
 
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
@@ -152,7 +161,7 @@ export class MicRecorder {
         } else if (!speaking) {
           noiseFloor = noiseFloor * 0.97 + Math.min(rms, noiseFloor * 2) * 0.03;
         }
-        const threshold = Math.max(0.012, noiseFloor * 2.8);
+        const threshold = Math.max(minLevel, noiseFloor * 2.8);
         const loud = rms > threshold;
 
         if (!speaking) {
@@ -160,7 +169,7 @@ export class MicRecorder {
           if (this.preRoll.length > preRollFrames) this.preRoll.shift();
           loudRun = loud ? loudRun + frameMs : 0;
           // ~120 ms of sustained sound counts as speech, so clicks don't trigger it
-          if (loudRun >= 120) {
+          if (loudRun >= startAfterMs) {
             speaking = true;
             this.chunks.push(...this.preRoll);
             this.preRoll = [];
@@ -175,7 +184,7 @@ export class MicRecorder {
         speechMs += frameMs;
         silenceMs = loud ? 0 : silenceMs + frameMs;
         if (silenceMs >= endSilenceMs || speechMs >= maxDurationMs) {
-          if (speechMs - silenceMs < 250) {
+          if (speechMs - silenceMs < minSpeechMs) {
             this.finish({ reason: 'no-speech' });
           } else {
             const wavBase64 = encodeWav(this.chunks, rate);
