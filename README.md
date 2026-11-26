@@ -9,12 +9,12 @@
 </p>
 
 <p align="center">
-  <b>Advanced Desktop AI Assistant — Voice, Vision Intelligence, and System Control</b><br/>
+  <b>Desktop AI Assistant — Voice, Vision & System Control</b><br/>
   Powered by <a href="https://shazagency.com">Shaz Agency</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Electron-43.4-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/badge/Electron-43.8-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" />
   <img src="https://img.shields.io/badge/Three.js-0.185-000000?style=for-the-badge&logo=three.js&logoColor=white" alt="Three.js" />
   <img src="https://img.shields.io/badge/Google_Gemini-Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" />
@@ -23,121 +23,107 @@
 
 ---
 
-## Next-Generation Features (JARVIS 2.0)
+## Features
 
-### 1. 3D Motion Exploration Visualizer
-- **Multi-Axis Gyroscopic FUI Rings:** Independently rotating neon rings across X, Y, and Z axes with glowing photon beads gliding along orbital trajectories.
-- **360° Circular Audio Equalizer:** 64 radial 3D spectrum bars that dynamically scale and pulse with real-time audio input and output.
-- **1,200+ Quantum Particle Swarm:** An organic particle cloud revolving around a pulsating fluid plasma core.
+### 1. 3D Audio-Reactive Orb
+- **Galaxy & Classic Modes:** Spiral galaxy core with star field and dust arms, or the classic particle orb — switchable in Settings.
+- **Audio Synchronization:** Connected to the Web Audio Analyser API so the orb pulses with live microphone input and spoken replies.
 
-### 2. Studio-Quality Voice (Gemini HD + Neural fallback)
-- **Gemini HD voice:** Replies are spoken with Gemini text-to-speech voices (Charon, Orus, Kore and more) for natural, studio-quality Turkish and English.
-- **Automatic fallback:** If the HD voice is unavailable or its quota runs out, JARVIS switches to Microsoft neural voices (96 kbps, pitch and speed controls), then to the system voice.
-- **Voice picker:** Choose the engine and voice in Settings and preview it before saving.
-- **Live 3D Sphere Synchronization:** Real-time audio stream linked directly to the 3D core via the Web Audio Analyser API; the sphere ripples and pulses rhythmically as JARVIS speaks.
+### 2. Voice Output (Gemini HD + Neural Fallback)
+- **Gemini HD Voices:** Natural Turkish and English speech using Gemini TTS voices (`Charon`, `Orus`, `Kore`, and more).
+- **Automatic Fallback:** Falls back to Microsoft Edge neural voices (96 kbps with pitch/speed controls) or the system voice if quota runs out or HD TTS is unavailable.
+- **Voice Preview:** Pick your engine and voice in Settings and test playback before saving.
 
-### 3. Reliable Voice Input
-- **Direct microphone capture:** Records with echo cancellation and noise suppression and detects the end of a sentence automatically, so listening no longer stops by itself.
-- **Accurate transcription:** Speech is transcribed by Gemini and shown in the chat, so you see what JARVIS heard.
-- **Automatic model selection:** JARVIS asks the API which models your key can use and picks the newest fast Flash model, so retired model names don't break it.
-- **Clear errors:** An invalid key, exhausted quota, missing microphone or lost internet each get their own message instead of a generic connection error.
+### 3. Voice Input & Model Selection
+- **Direct Microphone Capture:** Records with echo cancellation, noise suppression, and automatic end-of-utterance detection.
+- **Transcripts & Context:** Transcribes speech via Gemini, shows what was heard in the chat, and keeps session conversation memory until you quit.
+- **Automatic Model Discovery:** Queries the Gemini API for available Flash models for your key and handles invalid key, quota, microphone, and network errors separately.
 
-### ⏹ 4. Instant Interrupt & Conversational Barge-In
-- Cut off voice output and ongoing tasks immediately by saying commands like *"stop"*, *"quiet"*, *"jarvis stop"*, or *"cancel"*, or by pressing the `Escape` key / clicking the **[STOP]** button in the UI.
+### 4. Instant Interrupt & Barge-In
+- Interrupt speech or active tasks at any time by saying *"stop"*, *"quiet"*, *"jarvis stop"*, or *"cancel"*, pressing `Escape`, or clicking **[STOP]**.
 
-### 5. Real-Time OS Sparkline Performance Telemetry
-- Live hardware telemetry dashboard tracking the last 15 seconds of CPU and RAM utilization with smooth gradient wave sparkline charts.
+### 5. System Telemetry & Desktop Controls
+- **CPU & RAM Ring Gauges:** Live CPU load and memory usage rings in the sidebar.
+- **Tool Calling:** Launch installed apps, open websites, search Google / YouTube / Maps, control media and volume, manage notes and reminders, search files, lock the PC, and analyze the screen or camera.
+- **Custom Voice Commands:** Configure phrase-to-reply and action routines in Settings (ships with `"Hey Jarvis"`).
 
-### 6. Modern Typography System
-- **UI Interface Font:** `Plus Jakarta Sans` for clean, contemporary readability.
-- **Telemetry & Technical Font:** `JetBrains Mono` for precise developer data and system statistics.
-
-### 7. Smart Application Control & Mobile Remote Access
-- Launch applications such as Google Chrome, Spotify, VS Code, Notepad, and Calculator via voice commands or a streamlined quick-access panel.
-- **Real tool calling:** Gemini decides when to act: open apps and folders, search Google / YouTube / Maps, control media and volume, set reminders, take and read notes, find files, lock the PC and report system status.
-- **Memory & context:** JARVIS remembers the last turns of the conversation and lasting facts you tell it.
-
-### 8. Always There: Desktop Mini Menu & "Hey Jarvis"
-- **Desktop mini menu:** A small capsule floats over the desktop with JARVIS's status, the time and buttons for screen analysis, the microphone and talking. Drag it anywhere; it remembers its position.
-- **"Hey Jarvis":** Closing the window keeps JARVIS in the tray. Say "Hey Jarvis" and it opens and answers; follow-up questions need no wake word.
-- **Starts with Windows:** JARVIS starts hidden at login so the wake word works right away. All of this can be turned off in Settings › Background or from the tray icon.
-- **Cyan Active Indicator:** Glowing indicator along the left rail highlighting currently focused and active applications.
-- **Mobile Remote Connectivity:** Connect any smartphone on the local network via QR code to monitor status and dispatch voice/text commands remotely.
+### 6. Always Available: Mini Menu, Tray & Wake Word
+- **Desktop Mini Menu:** Draggable always-on-top capsule showing status, time, screen analysis, microphone, and talk controls.
+- **"Hey Jarvis" Wake Word:** Closing the main window minimizes JARVIS to the system tray while background wake listening stays active.
+- **Start with Windows:** Optional background autostart at login (configurable in Settings or the tray menu).
+- **Mobile Remote (LAN):** Connect a phone on the same Wi-Fi network via QR code to view status and send commands.
 
 ---
 
-## Architecture & Tech Stack
+## Tech Stack
 
 | Component | Technology |
 | :--- | :--- |
-| **Desktop Shell** | Electron 43 (Windows Native) |
-| **Frontend UI** | React 19 (TypeScript) + Vite 8 |
-| **3D Graphics & Shaders** | Three.js + React Three Fiber + Drei |
-| **AI Engine** | Google Gemini REST (newest Flash model, chosen automatically) |
-| **Speech Synthesis** | Gemini TTS (HD) + Microsoft Edge Neural TTS fallback |
-| **Typography** | Plus Jakarta Sans & JetBrains Mono |
+| **Desktop Shell** | Electron 43 (Windows) |
+| **Frontend** | React 19 (TypeScript) + Vite 8 |
+| **3D Graphics** | Three.js + React Three Fiber + Drei |
+| **AI & Vision** | Google Gemini REST API |
+| **Text-to-Speech** | Gemini TTS (HD) + Microsoft Edge Neural TTS fallback |
+| **UI Font** | Inter |
 
 ---
 
 ## Download (Windows)
 
-Get the latest version from **[Releases](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/releases/latest)**:
+Get the latest release from **[Releases](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/releases/latest)**:
 
-- **`JARVIS.Setup.x.y.z.exe`**: installer with Start menu and desktop shortcuts.
-- **`JARVIS.x.y.z.exe`**: portable, runs without installing.
+- **`JARVIS.Setup.x.y.z.exe`**: Installer with Start menu and desktop shortcuts.
+- **`JARVIS.x.y.z.exe`**: Portable build, runs without installation.
 
-On first launch, enter your own free [Google Gemini API key](https://aistudio.google.com/apikey) in Settings. The key is stored only on your PC.
-The app is not code-signed yet, so Windows SmartScreen may show "Windows protected your PC": click **More info › Run anyway**.
+On first launch, enter your free [Google Gemini API key](https://aistudio.google.com/apikey) in Settings. Your key is stored locally on your machine.  
+Since the binaries are not code-signed yet, Windows SmartScreen may show a prompt — click **More info › Run anyway**.
 
-## Quick Start & Installation
+## Development Setup
 
 ### Prerequisites
-- **Node.js**: v18.0.0 or higher
-- **Google Gemini API Key**: Obtain a free API key from [Google AI Studio](https://aistudio.google.com/).
+- **Node.js** 18+
+- **Google Gemini API Key** from [Google AI Studio](https://aistudio.google.com/)
 
-### Installation Steps
+### Run Locally
 
-1. **Clone the Repository:**
+1. Clone the repository:
    ```bash
    git clone https://github.com/berkaysahin-dev/Shaz-Jarvis-AI.git
    cd Shaz-Jarvis-AI
    ```
 
-2. **Install Dependencies:**
+2. Install dependencies:
    ```bash
    npm install
    ```
 
-3. **Launch the Application:**
+3. Start the app:
    ```bash
    BASLAT.bat
    ```
-   Or in developer mode:
+   Or run in dev mode:
    ```bash
    npm run electron:dev
    ```
 
 ### Mobile Remote Access (LAN)
-To control JARVIS from a smartphone on the same Wi-Fi network:
 1. Run `TELEFON.bat` (or `npm run dev -- --host`).
-2. Open the displayed local IP address on your phone's browser or scan the in-app QR code.
+2. Open the local IP address on your phone or scan the QR code from the sidebar.
 
 ---
 
 ## Configuration
 
 1. Launch JARVIS.
-2. Click the **Settings (Gear)** icon in the top-right corner.
-3. Enter your **Google Gemini API Key** and save.
+2. Open **Settings** from the sidebar.
+3. Paste your **Google Gemini API Key** and save.
 
 ---
 
-## Brand & Developer
+## Developer
 
-Developer & Design: **[Shaz Agency](https://shazagency.com)**  
+**[Shaz Agency](https://shazagency.com)**  
 Repository: [github.com/berkaysahin-dev/Shaz-Jarvis-AI](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI)
-
----
 
 ## License
 

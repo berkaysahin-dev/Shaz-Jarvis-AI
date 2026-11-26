@@ -9,105 +9,95 @@
 </p>
 
 <p align="center">
-  <b>Gelişmiş Yapay Zeka Masaüstü Asistanı — Ses, Görsel Zeka ve Sistem Kontrolü</b><br/>
+  <b>Yapay Zeka Masaüstü Asistanı — Ses, Görsel Analiz ve Sistem Kontrolü</b><br/>
   Powered by <a href="https://shazagency.com">Shaz Agency</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Electron-43.4-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/badge/Electron-43.8-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron" />
   <img src="https://img.shields.io/badge/React-19.2-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React" />
   <img src="https://img.shields.io/badge/Three.js-0.185-000000?style=for-the-badge&logo=three.js&logoColor=white" alt="Three.js" />
   <img src="https://img.shields.io/badge/Google_Gemini-Flash-8E75B2?style=for-the-badge&logo=google&logoColor=white" alt="Google Gemini" />
   <img src="https://img.shields.io/badge/Edge_Neural_TTS-tr--TR--Ahmet-0078D7?style=for-the-badge&logo=microsoft&logoColor=white" alt="Edge Neural TTS" />
 </p>
----
-
-## Yeni Nesil Özellikler (JARVIS 2.0)
-
-### 1. 3D Motion Exploration Görselleştiricisi
-- **Çok Eksenli Jiroskopik FUI Halkaları:** X, Y, Z uzayında bağımsız dönen neon halkalar ve yörüngesinde süzülen parlayan foton boncukları.
-- **360° Dairesel Ses Ekolayzerı:** Ses giriş ve çıkışına göre dinamik uzayıp kısalan 64 adet 3D radyal spektrum çubuğu.
-- **1200+ Kuantum Parçacık Sarmalı:** Organik sıvı plazma çekirdek etrafında dönen parçacık bulutu.
-
-### 2. Stüdyo Kalitesinde Ses (Gemini HD + Neural yedek)
-- **Gemini HD ses:** Yanıtlar Gemini metin-okuma sesleriyle (Charon, Orus, Kore ve diğerleri) doğal, stüdyo kalitesinde Türkçe seslendirilir.
-- **Otomatik yedek:** HD ses kullanılamazsa veya kotası dolarsa JARVIS Microsoft nöral seslerine (96 kbps, ton ve hız ayarlı), o da olmazsa sistem sesine geçer.
-- **Ses seçici:** Ayarlar’dan motoru ve sesi seçip kaydetmeden önce dinleyebilirsiniz.
-- **Canlı 3D Küre Senkronizasyonu:** Çalınan ses Web Audio Analyser ile 3D küreye bağlanır; JARVIS konuşurken küre ritmik olarak dalgalanır.
-
-### 3. Güvenilir Sesli Komut
-- **Doğrudan mikrofon kaydı:** Yankı ve gürültü engellemeyle kayıt alır, cümlenin bittiğini kendisi anlar; dinleme artık kendiliğinden kapanmaz.
-- **Doğru yazıya dökme:** Konuşmanız Gemini ile yazıya çevrilir ve sohbette görünür; JARVIS’in ne duyduğunu görürsünüz.
-- **Otomatik model seçimi:** Anahtarınızın erişebildiği en yeni hızlı Flash modelini kendisi seçer; eskiyen model adları uygulamayı bozmaz.
-- **Anlaşılır hatalar:** Geçersiz anahtar, dolan kota, bulunamayan mikrofon veya internet kesintisi için ayrı ayrı mesaj gösterir.
-
-### ⏹ 4. Anında Sesli Sohbeti Durdurma & Araya Girme (Interrupt)
-- Konuşurken veya dinlerken *"dur"*, *"sus"*, *"jarvis dur"*, *"sohbeti durdur"*, *"iptal"* dediğinizde veya klavyeden `Escape` tuşuna / arayüzdeki **[DURDUR]** butonuna bastığınızda ses ve işlem anında kesilir.
-
-### 5. Gerçek Zamanlı OS Sparkline Performans Grafikleri
-- Son 15 saniyelik CPU ve RAM kullanımını degrade dalga grafikleri (Sparkline) ile canlı çizen modern OS kartı.
-
-### 6. Modern Tipografi
-- **Arayüz Fontu:** `Plus Jakarta Sans`
-- **Teknik/Telemetri Fontu:** `JetBrains Mono`
-
-### 7. Akıllı Uygulama Kontrolü & Mobil Uzaktan Erişim
-- Chrome, Spotify, VS Code, Not Defteri, Hesap Makinesi gibi uygulamaları sesle veya modern listeden başlatma.
-- **Gerçek araç çağırma:** Uygulama ve klasör açma, Google / YouTube / Haritalar’da arama, müzik ve ses kontrolü, hatırlatıcı, not alma ve okuma, dosya bulma, bilgisayarı kilitleme ve sistem durumu.
-- **Hafıza:** Son konuşmaları ve sizin hakkınızda söylediğiniz kalıcı bilgileri hatırlar.
-
-### 8. Her Zaman Yanınızda: Masaüstü Mini Menü & "Hey Jarvis"
-- **Masaüstü mini menü:** Masaüstünün üstünde JARVIS’in durumunu, saati ve ekran analizi, mikrofon ve konuş tuşlarını gösteren küçük bir kapsül. İstediğiniz yere sürükleyebilirsiniz; konumunu hatırlar.
-- **"Hey Jarvis":** Pencereyi kapatınca JARVIS tepside çalışmaya devam eder. "Hey Jarvis" deyince açılır ve yanıt verir; ardından gelen sorular için tekrar "Jarvis" demeniz gerekmez.
-- **Bilgisayarla birlikte başlar:** Oturum açılınca JARVIS gizli başlar, uyanma kelimesi hemen çalışır. Hepsi Ayarlar › Arka Plan’dan veya tepsi simgesinden kapatılabilir.
-- Sol kenarda aktif uygulamayı gösteren parlayan **Cyan Aktif Göstergesi**.
-- QR Kod ile cep telefonundan bağlanıp komut gönderebilme.
 
 ---
 
-## Mimari & Teknoloji Yığını
+## Özellikler
+
+### 1. 3D Ses Duyarlı Küre
+- **Galaksi ve Klasik Mod:** Yıldız alanı ve sarmal kollarıyla yeni galaksi küresi veya klasik parçacık küresi — Ayarlar'dan değiştirilebilir.
+- **Canlı Ses Senkronizasyonu:** Web Audio Analyser API ile mikrofon girişi ve konuşma çıkışına göre gerçek zamanlı tepki verir.
+
+### 2. Ses Çıkışı (Gemini HD + Neural Yedek)
+- **Gemini HD Sesler:** Gemini metin-okuma sesleriyle (`Charon`, `Orus`, `Kore` vb.) doğal Türkçe ve İngilizce seslendirme.
+- **Otomatik Yedek:** Kota dolduğunda veya HD ses kullanılamadığında Microsoft Edge nöral seslerine (96 kbps, ton/hız ayarlı) veya sistem sesine geçer.
+- **Ses Önizleme:** Ayarlar'dan motoru ve sesi seçip kaydetmeden önce dinleyebilirsiniz.
+
+### 3. Sesli Giriş ve Model Seçimi
+- **Doğrudan Mikrofon Kaydı:** Yankı ve gürültü engelleme ile kayıt alır, konuşmanın bittiğini otomatik algılar.
+- **Yazıya Dökme ve Oturum Hafızası:** Konuşmalar Gemini ile yazıya çevrilip sohbette gösterilir; uygulama kapanana kadar oturum hafızası korunur.
+- **Otomatik Model Seçimi:** API anahtarınızın erişebildiği güncel Flash modellerini otomatik tespit eder; geçersiz anahtar, kota, mikrofon ve bağlantı hatalarını ayrı bildirir.
+
+### 4. Anında Durdurma ve Araya Girme
+- Konuşurken veya dinlerken *"dur"*, *"sus"*, *"jarvis dur"*, *"sohbeti durdur"*, *"iptal"* diyerek, `Escape` tuşuna basarak veya **[DURDUR]** butonuna tıklayarak işlemi anında kesebilirsiniz.
+
+### 5. Sistem İzleme ve Masaüstü Kontrolü
+- **CPU ve RAM Halka Göstergeleri:** Kenar çubuğunda canlı CPU yükü ve bellek kullanımı.
+- **Araç Çağırma:** Uygulama ve klasör açma, Google / YouTube / Haritalar araması, medya ve ses kontrolü, not ve hatırlatıcı yönetimi, dosya arama, ekran ve kamera analizi, bilgisayarı kilitleme.
+- **Özel Sesli Komutlar:** Ayarlar'dan cümlelere özel yanıt ve eylem tanımlama (`"Hey Jarvis"` varsayılan komutuyla birlikte gelir).
+
+### 6. Mini Menü, Tepsi Modu ve Uyandırma Kelimesi
+- **Masaüstü Mini Menü:** Durum, saat, ekran analizi, mikrofon ve konuş tuşlarını içeren, sürüklenebilir her zaman üstte kapsül.
+- **"Hey Jarvis" ile Uyandırma:** Pencere kapatıldığında JARVIS sistem tepsisinde çalışmaya devam eder ve `"Hey Jarvis"` dediğinizde açılır.
+- **Windows ile Başlatma:** Oturum açılışında arka planda başlatma (Ayarlar veya tepsi menüsünden yönetilebilir).
+- **Mobil Uzaktan Erişim (LAN):** Aynı Wi-Fi ağındaki telefondan QR kod ile bağlanıp durum takibi ve komut gönderimi.
+
+---
+
+## Teknoloji Yığını
 
 | Bileşen | Teknoloji |
 | :--- | :--- |
-| **Masaüstü Motoru** | Electron 43 (Windows Native) |
-| **Önyüz UI** | React 19 (TypeScript) + Vite 8 |
-| **3D Rendering** | Three.js + React Three Fiber + Drei |
-| **Yapay Zeka Modelleri** | Google Gemini REST (en yeni Flash modeli, otomatik seçilir) |
+| **Masaüstü Çatısı** | Electron 43 (Windows) |
+| **Arayüz** | React 19 (TypeScript) + Vite 8 |
+| **3D Grafik** | Three.js + React Three Fiber + Drei |
+| **Yapay Zeka** | Google Gemini REST API |
 | **Ses Sentezi** | Gemini TTS (HD) + Microsoft Edge Neural TTS yedek |
-| **Tipografi** | Plus Jakarta Sans & JetBrains Mono |
+| **Yazı Tipi** | Inter |
 
 ---
 
 ## İndir (Windows)
 
-En güncel sürümü **[Releases](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/releases/latest)** sayfasından indirin:
+Güncel sürümü **[Releases](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI/releases/latest)** sayfasından indirebilirsiniz:
 
-- **`JARVIS.Setup.x.y.z.exe`**: Başlat menüsü ve masaüstü kısayoluyla kurulum.
+- **`JARVIS.Setup.x.y.z.exe`**: Başlat menüsü ve masaüstü kısayolu ile kurulum.
 - **`JARVIS.x.y.z.exe`**: Taşınabilir sürüm, kurulum gerektirmez.
 
-İlk açılışta Ayarlar’dan kendi ücretsiz [Google Gemini API anahtarınızı](https://aistudio.google.com/apikey) girin. Anahtar yalnızca sizin bilgisayarınızda saklanır.
-Uygulama henüz dijital olarak imzalı olmadığı için Windows SmartScreen “Windows bilgisayarınızı korudu” uyarısı gösterebilir: **Ek bilgi › Yine de çalıştır**’a tıklayın.
+İlk açılışta Ayarlar'dan kendi ücretsiz [Google Gemini API anahtarınızı](https://aistudio.google.com/apikey) girin. Anahtar yalnızca bilgisayarınızda saklanır.  
+Uygulama henüz dijital olarak imzalı olmadığı için Windows SmartScreen uyarısı çıkarsa **Ek bilgi › Yine de çalıştır** seçeneğini kullanın.
 
-## Hızlı Başlangıç & Kurulum
+## Geliştirici Kurulumu
 
 ### Gereksinimler
-- **Node.js**: v18.0.0 veya üzeri
-- **Google Gemini API Key**: [Google AI Studio](https://aistudio.google.com/)'dan ücretsiz temin edebilirsiniz.
+- **Node.js** 18+
+- [Google AI Studio](https://aistudio.google.com/) üzerinden alınmış **Google Gemini API Key**
 
-### Kurulum Adımları
+### Yerelde Çalıştırma
 
-1. **Depoyu Klonlayın:**
+1. Depoyu klonlayın:
    ```bash
    git clone https://github.com/berkaysahin-dev/Shaz-Jarvis-AI.git
    cd Shaz-Jarvis-AI
    ```
 
-2. **Bağımlılıkları Yükleyin:**
+2. Bağımlılıkları yükleyin:
    ```bash
    npm install
    ```
 
-3. **Uygulamayı Başlatın:**
+3. Uygulamayı başlatın:
    ```bash
    BASLAT.bat
    ```
@@ -116,21 +106,25 @@ Uygulama henüz dijital olarak imzalı olmadığı için Windows SmartScreen “
    npm run electron:dev
    ```
 
+### Mobil Uzaktan Erişim (LAN)
+1. `TELEFON.bat` dosyasını (veya `npm run dev -- --host` komutunu) çalıştırın.
+2. Telefonunuzdan ekrandaki yerel IP adresini açın ya da kenar çubuğundaki QR kodu okutun.
+
 ---
 
 ## Yapılandırma
+
 1. JARVIS'i açın.
-2. Sağ üstteki **Ayarlar (Dişli)** ikonuna tıklayın.
-3. **Google Gemini API Anahtarınızı** girip kaydedin.
+2. Kenar çubuğundan **Ayarlar** bölümüne girin.
+3. **Google Gemini API Anahtarınızı** yapıştırıp kaydedin.
 
 ---
 
-## Marka & Geliştirici
+## Geliştirici
 
-Geliştirici & Tasarım: **[Shaz Agency](https://shazagency.com)**  
+**[Shaz Agency](https://shazagency.com)**  
 Depo: [github.com/berkaysahin-dev/Shaz-Jarvis-AI](https://github.com/berkaysahin-dev/Shaz-Jarvis-AI)
 
----
-
 ## Lisans
-Bu proje [MIT Lisansı](LICENSE) altında lisanslanmıştır.
+
+Bu proje [MIT Lisansı](LICENSE) ile lisanslanmıştır.
